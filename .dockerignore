@@ -1,0 +1,13 @@
+.git
+.gitignore
+.env
+.env.local
+data/
+logs/
+__pycache__/
+venv/
+.venv/
+.vscode/
+.idea/
+*.log
+*.pcap
