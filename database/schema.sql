@@ -259,6 +259,35 @@ CREATE TABLE detection_rules (
 );
 
 -- =============================================
+-- TABLE: network_flows (ITÉRATION 1 - Traçabilité Totale)
+-- =============================================
+CREATE TABLE network_flows (
+    id BIGSERIAL PRIMARY KEY,
+    ts TIMESTAMP WITH TIME ZONE NOT NULL,
+    uid VARCHAR(20) UNIQUE,          -- Identifiant unique Zeek (très utile pour corrélation)
+    source_ip INET NOT NULL,
+    source_port INTEGER,
+    dest_ip INET NOT NULL,
+    dest_port INTEGER,
+    protocol VARCHAR(10),
+    service VARCHAR(20),             -- http, dns, ssl, etc.
+    duration INTERVAL,
+    orig_bytes BIGINT,               -- Octets envoyés
+    resp_bytes BIGINT,               -- Octets reçus
+    conn_state VARCHAR(20),          -- État TCP (S0, SF, REJ...)
+    
+    -- Métadonnées pour l'IA future
+    history TEXT,
+    orig_pkts INTEGER,
+    resp_pkts INTEGER,
+
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Indexation massive pour la recherche rapide (UC14)
+CREATE INDEX idx_flows_ts ON network_flows (ts);
+CREATE INDEX idx_flows_ips ON network_flows (source_ip, dest_ip);
+-- =============================================
 -- FONCTIONS ET TRIGGERS
 -- =============================================
 
