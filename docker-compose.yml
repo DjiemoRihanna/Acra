@@ -22,6 +22,7 @@ services:
       context: .
       dockerfile: docker/Dockerfile.zeek
     container_name: acra-zeek
+    command: zeek -i eth0 local "LogAscii::use_json=T"
     volumes:
       - ./data/zeek_logs:/usr/local/zeek/logs
 
@@ -36,8 +37,9 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      - ./src:/app
+      - .:/app
       - ./data/zeek_logs:/app/data/zeek_logs:ro
     environment:
+      - PYTHONPATH=/app
       - DATABASE_URL=postgresql://acra_admin:changeme123@postgres:5432/acra
       - REDIS_URL=redis://redis:6379/0

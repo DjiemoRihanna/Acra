@@ -3,12 +3,18 @@ import os
 import time
 import psycopg2
 from psycopg2.extras import execute_values
-import redis
 from datetime import datetime
-from src.core.event_bus import bus  # Import de ton bus d'événements
+import sys
+
+# Ajout du path pour les imports internes
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
+from src.core.event_bus import bus
+from src.app import app
+from src.models import db
 
 # Configuration via environnement
-DB_URL = os.getenv('DATABASE_URL', "dbname=acra user=acra_admin password=acra_pass host=postgres")
+DB_URL = os.getenv('DATABASE_URL', "dbname=acra user=acra_admin password=changeme123 host=postgres")
 ZEEK_LOG_PATH = "/app/data/zeek_logs/conn.log"
 
 def get_db_connection():
@@ -26,6 +32,7 @@ def flush_to_db(conn, buffer):
     if not buffer:
         return
     
+    # Noms de colonnes alignés avec src/models.py
     query = """
         INSERT INTO network_flows (ts, uid, source_ip, source_port, dest_ip, dest_port, protocol, service, orig_bytes, resp_bytes)
         VALUES %s ON CONFLICT (uid) DO NOTHING
@@ -40,8 +47,12 @@ def flush_to_db(conn, buffer):
         conn.rollback()
 
 def stream_zeek_logs():
-    print("📡 [INGESTION] Démarrage du pipeline ACRA (Itération 1)...")
+    print("📡 [INGESTION] Démarrage du pipeline ACRA...")
     
+    # S'assurer que les tables existent (via SQLAlchemy)
+    with app.app_context():
+        db.create_all()
+
     conn = get_db_connection()
     batch_size = 50
     buffer = []
@@ -54,7 +65,7 @@ def stream_zeek_logs():
     try:
         with open(ZEEK_LOG_PATH, "r") as f:
             # On commence à la fin du fichier (mode tail -f)
-            f.seek(0, 2)
+            f.seek(0, 0)
             
             while True:
                 line = f.readline()
@@ -70,7 +81,7 @@ def stream_zeek_logs():
                 try:
                     data = json.loads(line)
                     
-                    # 2. Préparation pour SQL
+                    # 2. Préparation pour SQL (aligné avec NetworkFlow)
                     flow_entry = (
                         datetime.fromtimestamp(data['ts']),
                         data['uid'],
@@ -78,7 +89,7 @@ def stream_zeek_logs():
                         data['id.orig_p'],
                         data['id.resp_h'],
                         data['id.resp_p'],
-                        data['proto'],
+                        data['proto'], # mappé vers 'protocol' dans la requête
                         data.get('service', 'unknown'),
                         data.get('orig_bytes', 0),
                         data.get('resp_bytes', 0)
@@ -107,7 +118,7 @@ def stream_zeek_logs():
                         conn = get_db_connection()
 
     except KeyboardInterrupt:
-        print("\n🛑 Arrêt du pipeline, sauvegarde des derniers flux...")
+        print("\n🛑 Arrêt du pipeline...")
         if buffer:
             flush_to_db(conn, buffer)
         conn.close()

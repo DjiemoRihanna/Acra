@@ -1,8 +1,19 @@
 FROM python:3.11-slim
+
 WORKDIR /app
-RUN apt-get update && apt-get install -y libpq-dev gcc
+
+# Installation des dépendances système pour psycopg2 (Postgres)
+RUN apt-get update && apt-get install -y \
+    libpq-dev \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copie et installation des requirements
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Copie du reste du code
 COPY . .
-# On lance ton script d'ingestion au démarrage
-CMD ["python", "src/ingestion/zeek_stream.py"]
+
+# Commande par défaut
+CMD ["python", "src/app.py"]
