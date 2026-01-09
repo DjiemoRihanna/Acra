@@ -1,5 +1,6 @@
 flask
 flask-sqlalchemy
+flask-login
+flask-bcrypt
 psycopg2-binary
-redis
-python-dotenv
+sqlalchemy
