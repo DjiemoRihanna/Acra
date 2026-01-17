@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ACRA | {% block title %}{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* Force l'alignement vertical de tous les éléments dans l'overlay */
+        .auth-overlay {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            width: 100%;
+            position: relative;
+            z-index: 2;
+        }
+
+        /* --- AJUSTEMENT POUR LE MODE CLAIR SUR L'AUTH --- */
+        body.light-mode.auth-body {
+            background: #f4f7f6 !important; /* On remplace le gradient par un fond neutre pro */
+        }
+        
+        body.light-mode .brand-name {
+            color: var(--acra-navy) !important;
+        }
+
+        body.light-mode .version-tag {
+            color: var(--text-muted) !important;
+        }
+
+        .alert-container {
+            width: 100%;
+            max-width: 450px;
+            margin-bottom: 20px;
+        }
+
+        .alert-item {
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-left: 4px solid;
+            animation: fadeInDown 0.4s ease-out;
+        }
+
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-15px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+{# On applique la classe de thème ici #}
+<body class="auth-body {{ current_user.theme if current_user.is_authenticated else 'dark' }}-mode">
+    <div class="auth-overlay">
+        
+        <div class="brand-header-auth" style="margin-bottom: 20px; text-align: center;">
+            <span class="brand-name" style="font-size: 2.5rem; font-weight: 800; letter-spacing: 3px;">ACRA</span>
+        </div>
+
+        <div class="alert-container">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+              {% if messages %}
+                {% for category, message in messages %}
+                  <div class="alert-item" style="
+                    {% if category == 'success' %}
+                        background: rgba(46, 204, 113, 0.15); border-color: #2ecc71; color: #2ecc71;
+                    {% else %}
+                        background: rgba(231, 76, 60, 0.15); border-color: #e74c3c; color: #ff6b6b;
+                    {% endif %}
+                  ">
+                    <i class="fas {{ 'fa-check-circle' if category == 'success' else 'fa-exclamation-triangle' }}"></i>
+                    <span>{{ message }}</span>
+                  </div>
+                {% endfor %}
+              {% endif %}
+            {% endwith %}
+        </div>
+
+        {% block content %}{% endblock %}
+
+        <div class="version-tag" style="margin-top: 30px; font-weight: 600;">ACRA v1.0.0</div>
+    </div>
+</body>
+</html>

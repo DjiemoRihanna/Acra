@@ -1,0 +1,208 @@
+{% extends "layouts/base.html" %}
+
+{% block content %}
+<style>
+    /* --- LE VERROU : Empêche le dashboard de se déformer --- */
+    .charts-container {
+        display: grid;
+        grid-template-columns: 1.6fr 1fr;
+        gap: 20px;
+        width: 100%;
+        max-width: 100%; /* Verrouille la largeur maximale */
+    }
+
+    .chart-card {
+        min-width: 0; /* Empêche la carte de grandir avec son contenu */
+        overflow: hidden; 
+    }
+
+    /* --- LES BARRES DE DÉFILEMENT --- */
+    .chart-container-scroll {
+        width: 100%;
+        height: 300px; /* Fixe la hauteur pour activer le scroll vertical si besoin */
+        overflow-x: auto; /* Scroll horizontal */
+        overflow-y: auto; /* Scroll vertical activé */
+        padding-bottom: 10px;
+        border: 1px solid rgba(0, 188, 212, 0.1);
+    }
+
+    #chart-wrapper {
+        min-width: 100%;
+        height: 250px; /* Hauteur du graphique */
+        transition: width 0.3s ease;
+    }
+
+    /* Style Cyber pour les barres (Horizontal & Vertical) */
+    .chart-container-scroll::-webkit-scrollbar {
+        height: 8px; /* Épaisseur barre horizontale */
+        width: 8px;  /* Épaisseur barre verticale */
+    }
+    .chart-container-scroll::-webkit-scrollbar-thumb {
+        background: #00bcd4;
+        border-radius: 10px;
+        border: 2px solid #1a1a1a;
+    }
+    .chart-container-scroll::-webkit-scrollbar-track {
+        background: #1a1a1a;
+    }
+</style>
+
+<div class="top-cards">
+    <div class="card">
+        <div style="color: #3e7eee; font-size: 20px; margin-bottom: 10px;">
+            <i class="fas fa-users"></i> Comptes Actifs
+        </div>
+        <div style="font-size: 48px; font-weight: bold;">{{ total_users }}</div>
+        <div style="color: #2ecc71;">Système Opérationnel</div>
+    </div>
+
+    <div class="card">
+        <div style="color: #f39c12; font-size: 16px;">Statut NDR</div>
+        <div style="font-size: 28px; font-weight: bold; margin: 10px 0;">
+            <span id="live-indicator" style="color: {{ '#2ecc71' if is_observing else '#e74c3c' }}; transition: all 0.3s;">●</span> 
+            <span id="status-text">{{ "Observation Active" if is_observing else "Sonde Déconnectée" }}</span>
+        </div>
+        <div style="color: #888; margin-bottom: 10px;">Mode : Semi-Automatique</div>
+        <button style="background: #00bcd4; color: white; border: none; padding: 8px 15px; border-radius: 2px; cursor: pointer;">
+            Changer de Mode
+        </button>
+    </div>
+
+    <div class="card">
+        <div style="color: #e74c3c; font-size: 16px;"><i class="fas fa-history"></i> Journaux d'Audit </div>
+        <div style="display: flex; gap: 30px; margin-top: 10px;">
+            <div>
+                <span style="font-size: 32px; font-weight: bold; color: #3e7eee;">{{ audit_count }}</span>
+                <br><small>Actions loguées</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="charts-container">
+    <div class="chart-card">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+            <i class="fas fa-chart-area"></i> Timeline Infinie des Flux (Live & Historique)
+            <span id="sync-badge" style="font-size: 10px; background: #00bcd4; color: white; padding: 2px 6px; border-radius: 10px; display: none;">LIVE</span>
+        </div>
+        <div class="chart-container-scroll" id="scroll-area">
+            <div id="chart-wrapper">
+                <canvas id="networkFlowChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="chart-card">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+            <i class="fas fa-chart-pie"></i> Répartition des Alertes (Analyseur)
+        </div>
+        <div style="height: 250px;">
+            <canvas id="alertsPieChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="table-card">
+    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+        <i class="fas fa-list"></i> Top IP Suspectes (Derniers Flux)
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>IP Source</th>
+                <th>Score</th>
+                <th>Alertes</th>
+                <th>Action NDR</th>
+            </tr>
+        </thead>
+        <tbody id="ip-table-body">
+            {% for ip in top_ips %}
+            <tr>
+                <td>{{ ip.ip }}</td>
+                <td style="color: #e74c3c; font-weight: bold;">{{ ip.score }}</td>
+                <td>{{ ip.alertes }}</td>
+                <td><button class="btn-bloquer">Bloquer</button></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+
+<script>
+    const networkLabels = {{ labels|tojson if labels else [] }};
+    const networkValues = {{ network_data|tojson if network_data else [] }};
+    let networkFlowChart; 
+</script>
+
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+
+<script>
+    const socket = io();
+    const indicator = document.getElementById('live-indicator');
+    const statusText = document.getElementById('status-text');
+    const syncBadge = document.getElementById('sync-badge');
+    const scrollArea = document.getElementById('scroll-area');
+    const chartWrapper = document.getElementById('chart-wrapper');
+
+    // --- FONCTION DE SYNCHRONISATION DE LA LARGEUR ---
+    function syncChartWidth() {
+        if (networkFlowChart) {
+            const pointCount = networkFlowChart.data.labels.length;
+            const minWidthPerPoint = 60; // Espace entre chaque point
+            const calculatedWidth = pointCount * minWidthPerPoint;
+            const containerWidth = scrollArea.clientWidth;
+
+            if (calculatedWidth > containerWidth) {
+                chartWrapper.style.width = calculatedWidth + "px";
+                networkFlowChart.resize();
+            } else {
+                chartWrapper.style.width = "100%";
+            }
+            // Toujours scroller vers la fin (le présent)
+            scrollArea.scrollLeft = scrollArea.scrollWidth;
+        }
+    }
+
+    // --- APPEL AU CHARGEMENT (Pour les données historiques) ---
+    window.addEventListener('load', () => {
+        // Petit délai pour laisser le temps à Chart.js de se dessiner via main.js
+        setTimeout(syncChartWidth, 500);
+    });
+
+    socket.on('connect', () => {
+        syncBadge.style.display = 'inline';
+        indicator.style.color = "#2ecc71";
+        statusText.innerText = "Observation Active";
+    });
+
+    socket.on('update_graph', function(msg) {
+        if (networkFlowChart) {
+            const now = new Date();
+            const timeLabel = now.getHours().toString().padStart(2, '0') + ":" + 
+                             now.getMinutes().toString().padStart(2, '0') + ":" + 
+                             now.getSeconds().toString().padStart(2, '0');
+
+            networkFlowChart.data.labels.push(timeLabel);
+            networkFlowChart.data.datasets[0].data.push(msg.volume);
+
+            // Mise à jour de l'étirement en temps réel
+            syncChartWidth();
+
+            networkFlowChart.update('none'); 
+            
+            indicator.style.textShadow = "0 0 15px #00bcd4";
+            setTimeout(() => { indicator.style.textShadow = "none"; }, 300);
+        }
+    });
+
+    socket.on('disconnect', () => {
+        syncBadge.style.display = 'none';
+        indicator.style.color = "#e74c3c";
+        statusText.innerText = "Sonde Déconnectée";
+    });
+</script>
+{% endblock %}

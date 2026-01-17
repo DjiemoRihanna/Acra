@@ -1,0 +1,47 @@
+{% extends "layouts/auth_base.html" %}
+
+{% block title %}Réinitialisation | ACRA{% endblock %}
+
+{% block content %}
+<div class="auth-card">
+    <div class="auth-header">
+        <i class="fas fa-shield-virus" style="font-size: 2.5rem; color: var(--acra-cyan);"></i>
+        <h2>ACRA CYBERSEC</h2>
+        <p>Récupération de compte Analyste</p>
+    </div>
+
+    {% if step == "request" %}
+    <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group">
+            <label><i class="fas fa-envelope"></i> Email Professionnel</label>
+            <input type="email" name="email" class="form-control" required placeholder="analyste@acra.local">
+        </div>
+        <button type="submit" class="btn-primary" style="width: 100%; margin-top: 1rem;">
+            Envoyer le lien de récupération
+        </button>
+    </form>
+    {% else %}
+    <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group">
+            <label>Nouveau mot de passe</label>
+            <input type="password" name="password" class="form-control" required>
+        </div>
+        <div class="form-group">
+            <label>Confirmer le mot de passe</label>
+            <input type="password" name="confirm_password" class="form-control" required>
+        </div>
+        <button type="submit" class="btn-primary" style="width: 100%; margin-top: 1rem;">
+            Réinitialiser mon accès
+        </button>
+    </form>
+    {% endif %}
+
+    <div style="text-align: center; margin-top: 1.5rem;">
+        <a href="{{ url_for('auth.login') }}" style="color: var(--acra-cyan); text-decoration: none; font-size: 0.9rem;">
+            <i class="fas fa-arrow-left"></i> Retour à la connexion
+        </a>
+    </div>
+</div>
+{% endblock %}

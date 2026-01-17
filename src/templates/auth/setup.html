@@ -1,0 +1,127 @@
+{% extends "layouts/auth_base.html" %}
+
+{% block title %}Première Initialisation{% endblock %}
+
+{% block content %}
+<div class="auth-card-container" style="display: flex; justify-content: center; align-items: center; width: 100%; margin-top: 30px; margin-bottom: 30px;">
+    <div class="auth-card" style="width: 100%; max-width: 500px; background: rgba(10, 25, 41, 0.9); border: 1px solid #00bcd4; padding: 40px; border-radius: 12px; box-shadow: 0 0 30px rgba(0, 188, 212, 0.2); backdrop-filter: blur(10px);">
+        
+        <div style="text-align: center; margin-bottom: 30px;">
+            <h2 style="color: #00bcd4; margin: 0; font-weight: 800; text-transform: uppercase; letter-spacing: 2px;">INITIALISATION SYSTÈME</h2>
+            <p style="color: #888; margin-top: 10px; font-size: 0.9rem;">Bienvenue sur <strong style="color: #00bcd4;">ACRA</strong>. Configurez le compte administrateur racine.</p>
+        </div>
+
+        <form action="{{ url_for('auth.setup') }}" method="POST" id="setupForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label style="display: block; color: #aaa; margin-bottom: 5px; font-size: 0.8rem; text-transform: uppercase;">Nom d'utilisateur</label>
+                <input type="text" name="username" placeholder="ex: admin_root" required 
+                       style="width: 100%; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: white; outline: none;">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label style="display: block; color: #aaa; margin-bottom: 5px; font-size: 0.8rem; text-transform: uppercase;">Email Administrateur</label>
+                <input type="email" name="email" placeholder="admin@acra.local" required 
+                       style="width: 100%; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: white; outline: none;">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label style="display: block; color: #aaa; margin-bottom: 5px; font-size: 0.8rem; text-transform: uppercase;">Mot de passe Maître</label>
+                <input type="password" name="password" id="password" required 
+                       style="width: 100%; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: white; outline: none;"
+                       onkeyup="checkPasswordStrength()">
+                
+                <div id="strength-meter" style="display: flex; gap: 5px; margin-top: 10px;">
+                    <div class="bar" style="height: 4px; flex: 1; background: #333; border-radius: 2px; transition: 0.3s;"></div>
+                    <div class="bar" style="height: 4px; flex: 1; background: #333; border-radius: 2px; transition: 0.3s;"></div>
+                    <div class="bar" style="height: 4px; flex: 1; background: #333; border-radius: 2px; transition: 0.3s;"></div>
+                    <div class="bar" style="height: 4px; flex: 1; background: #333; border-radius: 2px; transition: 0.3s;"></div>
+                </div>
+
+                <ul style="font-size: 0.75rem; color: #666; list-style: none; padding: 0; margin-top: 12px;">
+                    <li id="req-len" style="margin-bottom: 4px;"><i class="fas fa-circle" style="font-size: 0.5rem; vertical-align: middle; margin-right: 8px;"></i> 12 caractères</li>
+                    <li id="req-up" style="margin-bottom: 4px;"><i class="fas fa-circle" style="font-size: 0.5rem; vertical-align: middle; margin-right: 8px;"></i> Une majuscule</li>
+                    <li id="req-num" style="margin-bottom: 4px;"><i class="fas fa-circle" style="font-size: 0.5rem; vertical-align: middle; margin-right: 8px;"></i> Un chiffre</li>
+                    <li id="req-spec" style="margin-bottom: 4px;"><i class="fas fa-circle" style="font-size: 0.5rem; vertical-align: middle; margin-right: 8px;"></i> Un caractère spécial</li>
+                </ul>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 25px;">
+                <label style="display: block; color: #aaa; margin-bottom: 5px; font-size: 0.8rem; text-transform: uppercase;">Confirmation</label>
+                <input type="password" name="confirm_password" id="confirm_password" required 
+                       style="width: 100%; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: white; outline: none;">
+            </div>
+
+            <button type="submit" style="width: 100%; padding: 14px; background: #00bcd4; border: none; border-radius: 6px; color: #0a1929; font-weight: 800; cursor: pointer; text-transform: uppercase; letter-spacing: 2px; transition: 0.3s;">
+                VALIDER L'INITIALISATION
+            </button>
+            
+            <p style="color: #555; font-size: 0.75rem; text-align: center; margin-top: 20px;">
+                Une fois validé, vous serez redirigé vers la mire de connexion.
+            </p>
+        </form>
+    </div>
+</div>
+
+<script>
+function checkPasswordStrength() {
+    const pwd = document.getElementById('password').value;
+    const bars = document.querySelectorAll('.bar');
+    
+    const checks = {
+        len: pwd.length >= 12,
+        up: /[A-Z]/.test(pwd),
+        num: /[0-9]/.test(pwd),
+        spec: /[!@#$%^&*(),.?":{}|<>]/.test(pwd)
+    };
+
+    updateReq('req-len', checks.len);
+    updateReq('req-up', checks.up);
+    updateReq('req-num', checks.num);
+    updateReq('req-spec', checks.spec);
+
+    const score = Object.values(checks).filter(Boolean).length;
+    bars.forEach((bar, i) => {
+        if (i < score) {
+            bar.style.background = score <= 2 ? '#e74c3c' : (score === 3 ? '#f39c12' : '#2ecc71');
+            bar.style.boxShadow = `0 0 8px ${bar.style.background}`;
+        } else {
+            bar.style.background = '#333';
+            bar.style.boxShadow = 'none';
+        }
+    });
+}
+
+function updateReq(id, valid) {
+    const el = document.getElementById(id);
+    if(el) {
+        el.style.color = valid ? '#2ecc71' : '#666';
+        const icon = el.querySelector('i');
+        if(icon) icon.className = valid ? 'fas fa-check-circle' : 'fas fa-circle';
+    }
+}
+
+document.getElementById('setupForm').onsubmit = function(e) {
+    const pwd = document.getElementById('password').value;
+    const confirm = document.getElementById('confirm_password').value;
+    const score = [pwd.length >= 12, /[A-Z]/.test(pwd), /[0-9]/.test(pwd), /[!@#$%^&*]/.test(pwd)].filter(Boolean).length;
+
+    if (score < 4) {
+        alert("Sécurité insuffisante : tous les critères doivent être cochés.");
+        e.preventDefault();
+        return;
+    }
+    
+    if (pwd !== confirm) {
+        alert("Les mots de passe ne correspondent pas !");
+        e.preventDefault();
+    }
+};
+</script>
+
+<style>
+    input:focus { border-color: #00bcd4 !important; background: rgba(255,255,255,0.08) !important; }
+    button:hover { background: #008ba3 !important; box-shadow: 0 0 20px rgba(0, 188, 212, 0.4); }
+</style>
+{% endblock %}

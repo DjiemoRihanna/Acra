@@ -1,0 +1,40 @@
+{% extends "layouts/auth_base.html" %}
+
+{% block content %}
+<div class="auth-container">
+    <div class="auth-card">
+        <div class="auth-header">
+            <img src="{{ url_for('static', filename='images/logo.png') }}" alt="ACRA Logo" class="logo">
+            <h1>BIENVENU<br>CONNEXION</h1>
+        </div>
+
+        <form action="{{ url_for('auth.login') }}" method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+            <div class="form-group">
+                <label for="email">Email:</label>
+                <input type="email" name="email" id="email" placeholder="Entrez votre email" required autofocus>
+            </div>
+
+            <div class="form-group">
+                <label for="password">Mot de passe:</label>
+                <input type="password" name="password" id="password" placeholder="************" required>
+            </div>
+
+            <div class="form-options" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <label style="display: flex; align-items: center; gap: 8px; color: #888; font-size: 0.85rem; cursor: pointer;">
+                    <input type="checkbox" name="remember_me" id="remember_me" style="width: 15px; height: 15px; cursor: pointer; accent-color: var(--acra-cyan);"> 
+                    Se souvenir de moi
+                </label>
+                <a href="{{ url_for('auth.forgot_password') }}" style="color: var(--acra-cyan); text-decoration: none; font-size: 0.85rem;">
+                    Mot de passe oublié ?
+                </a>
+            </div>
+
+            <button type="submit" class="btn-submit">Se connecter</button>
+        </form>
+        
+        <p class="footer-text">Contactez l'administrateur système pour toute assistance</p>
+    </div>
+</div>
+{% endblock %}

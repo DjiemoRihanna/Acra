@@ -1,3 +1,7 @@
+import eventlet
+# DOIT être la toute première ligne
+eventlet.monkey_patch()
+
 import json
 import os
 import time
@@ -5,34 +9,42 @@ import psycopg2
 from psycopg2.extras import execute_values
 from datetime import datetime
 import sys
+from flask_socketio import SocketIO
 
 # Ajout du path pour les imports internes
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from src.core.event_bus import bus
-from src.app import app
-from src.models import db
+try:
+    from src.core.event_bus import bus
+except ImportError:
+    bus = None
 
-# Configuration via environnement
+# --- CONFIGURATION ---
+REDIS_URL = os.getenv('REDIS_URL', 'redis://acra-redis:6379/0')
 DB_URL = os.getenv('DATABASE_URL', "dbname=acra user=acra_admin password=changeme123 host=postgres")
 ZEEK_LOG_PATH = "/app/data/zeek_logs/conn.log"
 
+print(f"📡 [DEBUG] Connexion au bus Redis : {REDIS_URL}", flush=True)
+
+try:
+    # On ajoute le paramètre engineio_logger pour voir les erreurs de transmission
+    socket_sender = SocketIO(message_queue=REDIS_URL, engineio_logger=False)
+    print("✅ [DEBUG] Socket.IO prêt pour l'émission vers le Dashboard.", flush=True)
+except Exception as e:
+    print(f"❌ [DEBUG] Erreur Socket.IO : {e}", flush=True)
+
 def get_db_connection():
-    """Gère la reconnexion automatique à PostgreSQL"""
     while True:
         try:
             conn = psycopg2.connect(DB_URL)
             return conn
         except Exception as e:
-            print(f"❌ [DB] Connexion impossible, nouvelle tentative dans 2s... ({e})")
+            print(f"❌ [DB] Connexion impossible, nouvelle tentative... ({e})", flush=True)
             time.sleep(2)
 
 def flush_to_db(conn, buffer):
-    """Insertion groupée (Bulk Insert) pour optimiser les performances"""
     if not buffer:
         return
-    
-    # Noms de colonnes alignés avec src/models.py
     query = """
         INSERT INTO network_flows (ts, uid, source_ip, source_port, dest_ip, dest_port, protocol, service, orig_bytes, resp_bytes)
         VALUES %s ON CONFLICT (uid) DO NOTHING
@@ -41,87 +53,69 @@ def flush_to_db(conn, buffer):
         with conn.cursor() as cur:
             execute_values(cur, query, buffer)
             conn.commit()
-            print(f"✅ [DB] Batch de {len(buffer)} flux insérés.")
+            print(f"📦 [DB] {len(buffer)} flux sauvegardés.", flush=True)
     except Exception as e:
-        print(f"❌ [DB] Erreur lors de l'insertion : {e}")
+        print(f"❌ [DB] Erreur insertion : {e}", flush=True)
         conn.rollback()
 
 def stream_zeek_logs():
-    print("📡 [INGESTION] Démarrage du pipeline ACRA...")
-    
-    # S'assurer que les tables existent (via SQLAlchemy)
-    with app.app_context():
-        db.create_all()
-
+    print("🚀 [INGESTION] Pipeline ACRA démarré (Mode Stable)", flush=True)
     conn = get_db_connection()
-    batch_size = 50
+    batch_size = 10 
     buffer = []
 
-    # 1. Attente de la sonde Zeek
     while not os.path.exists(ZEEK_LOG_PATH):
-        print(f"⏳ En attente du fichier log : {ZEEK_LOG_PATH} ...")
+        print(f"⏳ [FILE] En attente de : {ZEEK_LOG_PATH} ...", flush=True)
         time.sleep(2)
 
-    try:
-        with open(ZEEK_LOG_PATH, "r") as f:
-            # On commence à la fin du fichier (mode tail -f)
-            f.seek(0, 0)
-            
-            while True:
-                line = f.readline()
+    with open(ZEEK_LOG_PATH, "r") as f:
+        # ON VA À LA FIN DU FICHIER pour ne traiter que le "vrai" temps réel
+        f.seek(0, 2)
+        
+        while True:
+            line = f.readline()
+            if not line:
+                # Si rien à lire, on vide quand même le buffer s'il contient des données
+                if buffer:
+                    flush_to_db(conn, buffer)
+                    buffer = []
+                time.sleep(0.1)
+                continue
+
+            try:
+                data = json.loads(line)
+                raw_vol = (data.get('orig_bytes') or 0) + (data.get('resp_bytes') or 0)
+                vol_mo = round(raw_vol / (1024 * 1024), 4)
+
+                current_time = datetime.now().strftime('%H:%M:%S')
                 
-                # Si pas de nouvelle ligne, on vide le buffer si nécessaire
-                if not line:
-                    if buffer:
-                        flush_to_db(conn, buffer)
-                        buffer = []
-                    time.sleep(0.1) # Ultra-réactif pour respecter les < 2s
-                    continue
+                # ÉMISSION VERS REDIS -> DASHBOARD
+                socket_sender.emit('update_graph', {
+                    'volume': vol_mo if vol_mo > 0 else 0.001
+                }, namespace='/')
+                
+                print(f"🔥 [LIVE] {current_time} | {vol_mo} Mo envoyés", flush=True)
 
-                try:
-                    data = json.loads(line)
-                    
-                    # 2. Préparation pour SQL (aligné avec NetworkFlow)
-                    flow_entry = (
-                        datetime.fromtimestamp(data['ts']),
-                        data['uid'],
-                        data['id.orig_h'],
-                        data['id.orig_p'],
-                        data['id.resp_h'],
-                        data['id.resp_p'],
-                        data['proto'], # mappé vers 'protocol' dans la requête
-                        data.get('service', 'unknown'),
-                        data.get('orig_bytes', 0),
-                        data.get('resp_bytes', 0)
-                    )
-                    buffer.append(flow_entry)
+                flow_entry = (
+                    datetime.fromtimestamp(data['ts']), data['uid'],
+                    data['id.orig_h'], data['id.orig_p'],
+                    data['id.resp_h'], data['id.resp_p'],
+                    data['proto'], data.get('service', 'unknown'),
+                    data.get('orig_bytes', 0), data.get('resp_bytes', 0)
+                )
+                buffer.append(flow_entry)
 
-                    # 3. Notification TEMPS RÉEL via le Bus (pour Membre C)
-                    bus.publish_flow({
-                        'src': data['id.orig_h'],
-                        'dst': data['id.resp_h'],
-                        'proto': data['proto'],
-                        'service': data.get('service', '-')
-                    })
+                if len(buffer) >= batch_size:
+                    flush_to_db(conn, buffer)
+                    buffer = []
 
-                    # 4. Insertion par lot
-                    if len(buffer) >= batch_size:
-                        flush_to_db(conn, buffer)
-                        buffer = []
+            except Exception as e:
+                print(f"⚠️ [ERREUR] : {e}", flush=True)
 
-                except json.JSONDecodeError:
-                    continue
-                except Exception as e:
-                    print(f"⚠️ Erreur traitement ligne : {e}")
-                    # En cas d'erreur DB, on recrée la connexion
-                    if conn.closed:
-                        conn = get_db_connection()
-
-    except KeyboardInterrupt:
-        print("\n🛑 Arrêt du pipeline...")
-        if buffer:
-            flush_to_db(conn, buffer)
-        conn.close()
-
+# --- AJOUT INDISPENSABLE : L'appel au démarrage ---
 if __name__ == "__main__":
-    stream_zeek_logs()
+    try:
+        stream_zeek_logs()
+    except KeyboardInterrupt:
+        print("\n🛑 Arrêt du streamer.")
+        sys.exit(0)
