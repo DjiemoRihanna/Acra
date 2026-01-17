@@ -8,8 +8,8 @@ services:
       POSTGRES_DB: acra
       POSTGRES_USER: acra_admin
       POSTGRES_PASSWORD: changeme123
-    # ports:
-     # - "5432:5432"
+    volumes:
+      - ./data/pgdata:/var/lib/postgresql/data # Pour ne pas perdre tes données au redémarrage
 
   redis:
     image: redis:7-alpine
@@ -39,8 +39,33 @@ services:
     volumes:
       - .:/app
       - ./data/zeek_logs:/app/data/zeek_logs:ro
+      - ./backups/audit_logs:/app/exports
     environment:
       - PYTHONPATH=/app
       - DATABASE_URL=postgresql://acra_admin:changeme123@postgres:5432/acra
-      - REDIS_URL=redis://redis:6379/0
-      - PYTHONUNBUFFERED=1  # <--- Ajoute cette ligne
+      - REDIS_URL=redis://acra-redis:6379/0 # Corrigé pour correspondre au nom du container redis
+      - PYTHONUNBUFFERED=1 
+
+  # --- AJOUT DU STREAMER AUTOMATIQUE ---
+  zeek-streamer:
+      build:
+        context: .
+        dockerfile: docker/Dockerfile.web
+      container_name: acra-streamer
+      # AJOUT DU -u POUR LE TEMPS RÉEL (Important !)
+      command: python src/ingestion/zeek_stream.py
+      depends_on:
+        - postgres
+        - redis
+        - zeek
+      volumes:
+        - .:/app
+        # On s'assure que le chemin est EXACTEMENT le même que celui défini dans le script Python
+        - ./data/zeek_logs:/app/data/zeek_logs
+      environment:
+        - PYTHONPATH=/app
+        # Utilisation du nom du service "postgres" et non localhost
+        - DATABASE_URL=postgresql://acra_admin:changeme123@postgres:5432/acra
+        - REDIS_URL=redis://acra-redis:6379/0
+        - PYTHONUNBUFFERED=1
+      restart: always

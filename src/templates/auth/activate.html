@@ -1,0 +1,122 @@
+{% extends "layouts/auth_base.html" %}
+
+{% block title %}Activation du Compte SOC{% endblock %}
+
+{% block content %}
+<div class="auth-card-container" style="display: flex; justify-content: center; align-items: center; width: 100%; margin-top: 50px;">
+    <div class="auth-card" style="width: 100%; max-width: 450px; background: rgba(10, 25, 41, 0.9); border: 1px solid #00bcd4; padding: 40px; border-radius: 12px; box-shadow: 0 0 30px rgba(0, 188, 212, 0.2); backdrop-filter: blur(10px);">
+        
+        <div style="text-align: center; margin-bottom: 30px;">
+            <div style="width: 60px; height: 60px; background: #00bcd4; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #0a1929; font-size: 1.5rem; margin-bottom: 15px;">
+                <i class="fas fa-user-shield"></i>
+            </div>
+            <h2 style="color: #00bcd4; margin: 0; font-weight: 800; text-transform: uppercase; letter-spacing: 2px;">Activation SOC</h2>
+            <p style="color: #888; margin-top: 10px; font-size: 0.9rem;">Initialisation des accès pour :<br>
+               <strong style="color: white;">{{ email }}</strong>
+            </p>
+        </div>
+
+        <form method="POST" id="activationForm" action="{{ url_for('auth.activate_account', token=token, email=email) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label style="display: block; color: #aaa; margin-bottom: 8px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px;">Nouveau mot de passe</label>
+                <input type="password" name="password" id="password" required 
+                       style="width: 100%; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: white; outline: none; transition: 0.3s;"
+                       onkeyup="checkPasswordStrength()">
+                
+                <div id="strength-meter" style="display: flex; gap: 5px; margin-top: 10px;">
+                    <div class="bar" style="height: 4px; flex: 1; background: #333; border-radius: 2px; transition: 0.3s;"></div>
+                    <div class="bar" style="height: 4px; flex: 1; background: #333; border-radius: 2px; transition: 0.3s;"></div>
+                    <div class="bar" style="height: 4px; flex: 1; background: #333; border-radius: 2px; transition: 0.3s;"></div>
+                    <div class="bar" style="height: 4px; flex: 1; background: #333; border-radius: 2px; transition: 0.3s;"></div>
+                </div>
+
+                <ul id="password-requirements" style="font-size: 0.75rem; color: #666; list-style: none; padding: 0; margin-top: 12px;">
+                    <li id="req-len" style="margin-bottom: 4px;"><i class="fas fa-circle" style="font-size: 0.5rem; vertical-align: middle; margin-right: 8px;"></i> 12 caractères minimum</li>
+                    <li id="req-up" style="margin-bottom: 4px;"><i class="fas fa-circle" style="font-size: 0.5rem; vertical-align: middle; margin-right: 8px;"></i> Une majuscule</li>
+                    <li id="req-num" style="margin-bottom: 4px;"><i class="fas fa-circle" style="font-size: 0.5rem; vertical-align: middle; margin-right: 8px;"></i> Un chiffre</li>
+                    <li id="req-spec" style="margin-bottom: 4px;"><i class="fas fa-circle" style="font-size: 0.5rem; vertical-align: middle; margin-right: 8px;"></i> Un caractère spécial</li>
+                </ul>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 25px;">
+                <label style="display: block; color: #aaa; margin-bottom: 8px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px;">Confirmer le mot de passe</label>
+                <input type="password" name="confirm_password" id="confirm_password" required 
+                       style="width: 100%; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: white; outline: none; transition: 0.3s;">
+            </div>
+
+            <button type="submit" style="width: 100%; padding: 14px; background: #00bcd4; border: none; border-radius: 6px; color: #0a1929; font-weight: 800; cursor: pointer; text-transform: uppercase; letter-spacing: 2px; transition: 0.3s;" id="submitBtn">
+                ACTIVER LE COMPTE
+            </button>
+        </form>
+    </div>
+</div>
+
+<script>
+function checkPasswordStrength() {
+    const pwd = document.getElementById('password').value;
+    const bars = document.querySelectorAll('.bar');
+    
+    const checks = {
+        len: pwd.length >= 12,
+        up: /[A-Z]/.test(pwd),
+        num: /[0-9]/.test(pwd),
+        spec: /[!@#$%^&*(),.?":{}|<>]/.test(pwd)
+    };
+
+    updateReq('req-len', checks.len);
+    updateReq('req-up', checks.up);
+    updateReq('req-num', checks.num);
+    updateReq('req-spec', checks.spec);
+
+    const score = Object.values(checks).filter(Boolean).length;
+    bars.forEach((bar, i) => {
+        if (i < score) {
+            bar.style.background = score <= 2 ? '#e74c3c' : (score === 3 ? '#f39c12' : '#2ecc71');
+            bar.style.boxShadow = `0 0 8px ${bar.style.background}`;
+        } else {
+            bar.style.background = '#333';
+            bar.style.boxShadow = 'none';
+        }
+    });
+}
+
+function updateReq(id, valid) {
+    const el = document.getElementById(id);
+    if(el) {
+        el.style.color = valid ? '#2ecc71' : '#666';
+        const icon = el.querySelector('i');
+        if(icon) icon.className = valid ? 'fas fa-check-circle' : 'fas fa-circle';
+    }
+}
+
+document.getElementById('activationForm').onsubmit = function(e) {
+    const pwd = document.getElementById('password').value;
+    const confirm = document.getElementById('confirm_password').value;
+    
+    if (pwd.length < 12) {
+        alert("Le mot de passe doit contenir au moins 12 caractères.");
+        e.preventDefault();
+        return;
+    }
+    
+    if (pwd !== confirm) {
+        alert("Les mots de passe ne correspondent pas !");
+        e.preventDefault();
+    }
+};
+</script>
+
+<style>
+    input:focus {
+        border-color: #00bcd4 !important;
+        background: rgba(255,255,255,0.1) !important;
+    }
+    button:hover {
+        background: #008ba3 !important;
+        transform: translateY(-1px);
+        box-shadow: 0 5px 15px rgba(0, 188, 212, 0.4);
+    }
+</style>
+{% endblock %}

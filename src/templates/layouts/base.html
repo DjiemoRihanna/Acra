@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ACRA - SOC Platform</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <style>
+        /* --- STRUCTURE DE BASE --- */
+        body { 
+            display: flex; 
+            min-height: 100vh; 
+            overflow-x: hidden; 
+            margin: 0; 
+            font-family: 'Segoe UI', system-ui, sans-serif; 
+            background-color: var(--bg-body);
+            color: var(--text-main);           
+            transition: all 0.3s ease;
+        }
+
+        .sidebar { 
+            width: 260px; 
+            background: var(--sidebar-bg); 
+            color: var(--sidebar-text); 
+            display: flex; 
+            flex-direction: column; 
+            position: fixed; 
+            height: 100vh; 
+            transition: all 0.3s; 
+            z-index: 1000; 
+            border-right: 1px solid var(--border-color);
+        }
+
+        .nav-item { 
+            padding: 12px 20px; 
+            color: var(--sidebar-text); 
+            text-decoration: none; 
+            display: flex; 
+            align-items: center; 
+            gap: 12px; 
+            transition: 0.2s; 
+            border-left: 3px solid transparent; 
+            opacity: 0.8;
+        }
+
+        .nav-item:hover { background: rgba(0, 188, 212, 0.1); color: var(--acra-cyan); opacity: 1; }
+        .nav-item.active { background: rgba(0, 188, 212, 0.15); color: var(--acra-cyan); border-left-color: var(--acra-cyan); opacity: 1; }
+        .nav-item i { width: 20px; text-align: center; }
+        
+        /* --- 🛡️ LE GLOBAL PATCH (UC13) --- */
+        
+        /* Correction de la Sidebar en mode clair car elle est sombre par défaut dans ton CSS */
+        body.light-mode .sidebar {
+            background: #ffffff !important;
+            border-right: 1px solid var(--border-color) !important;
+        }
+        body.light-mode .sidebar .nav-item {
+            color: #475569 !important;
+        }
+        body.light-mode .sidebar .sidebar-header {
+            border-bottom: 1px solid #f1f5f9 !important;
+        }
+        body.light-mode .sidebar .nav-item:hover {
+            background: #f8fafc !important;
+        }
+
+        /* Forcer le fond de page et le texte en mode clair */
+        body.light-mode .main-content { 
+            background: var(--bg-body) !important; 
+        }
+        
+        /* Nettoyage du Header et de la zone utilisateur */
+        body.light-mode header, 
+        body.light-mode .user-info {
+            background: #ffffff !important;
+            border-color: var(--border-color) !important;
+            color: var(--text-main) !important;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
+        }
+
+        /* Correction des sélecteurs de ton main.css qui pourraient rester sombres */
+        body.light-mode .card, 
+        body.light-mode .settings-card, 
+        body.light-mode .table-card {
+            background: #ffffff !important;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+            border: 1px solid var(--border-color) !important;
+        }
+
+        /* Patch pour les textes qui pourraient hériter du blanc du mode sombre */
+        body.light-mode .user-info span,
+        body.light-mode th,
+        body.light-mode td {
+            color: var(--text-main) !important;
+        }
+
+        /* --- RESPONSIVE --- */
+        @media (max-width: 768px) {
+            .sidebar { width: 70px; }
+            .sidebar span { display: none; }
+            .sidebar-header { padding: 20px 10px !important; text-align: center; }
+            .main-content { margin-left: 70px !important; width: calc(100% - 70px) !important; }
+        }
+    </style>
+</head>
+<body class="{{ current_user.theme if current_user.is_authenticated else 'dark' }}-mode">
+    
+    <div class="sidebar">
+        <div class="sidebar-header" style="padding: 20px; font-weight: bold; font-size: 22px; color: var(--acra-cyan); letter-spacing: 2px;">
+            <i class="fas fa-shield-alt"></i> <span>ACRA</span>
+        </div>
+        
+        <nav style="flex: 1; display: flex; flex-direction: column; padding-top: 10px;">
+            <a href="{{ url_for('auth.dashboard') }}" class="nav-item {{ 'active' if request.endpoint == 'auth.dashboard' }}">
+                <i class="fas fa-th-large"></i> <span>Dashboard SOC</span>
+            </a>
+
+            <a href="#" class="nav-item"><i class="fas fa-project-diagram"></i> <span>Topologie Réseau</span></a>
+            <a href="#" class="nav-item"><i class="fas fa-exclamation-triangle"></i> <span>Centre d'Alertes</span></a>
+            <a href="{{ url_for('auth.view_audit_logs') }}" class="nav-item"><i class="fas fa-terminal"></i> <span>Log Explorer</span></a>
+            <a href="#" class="nav-item"><i class="fas fa-hand-fist"></i> <span>Console de Riposte</span></a>
+            <a href="#" class="nav-item"><i class="fas fa-heartbeat"></i> <span>Gestion Continuité</span></a>
+
+            <div style="height: 1px; background: var(--border-color); margin: 10px 20px; opacity: 0.3;"></div>
+
+            <a href="{{ url_for('auth.manage_users') }}" class="nav-item {{ 'active' if request.endpoint == 'auth.manage_users' }}">
+                <i class="fas fa-user-shield"></i> <span>Gestion Utilisateurs</span>
+            </a>
+
+            <a href="{{ url_for('auth.profile') }}" class="nav-item {{ 'active' if request.endpoint == 'auth.profile' }}">
+                <i class="fas fa-user-circle"></i> <span>Mon Profil</span>
+            </a>
+            
+            <a href="{{ url_for('auth.logout') }}" class="nav-item" style="margin-top: auto; color: #ff6b6b; border-top: 1px solid var(--border-color);">
+                <i class="fas fa-sign-out-alt"></i> <span>Déconnexion</span>
+            </a>
+        </nav>
+    </div>
+
+    <div class="main-content" style="flex: 1; margin-left: 260px; background: var(--bg-body); color: var(--text-main);">
+        
+        <header style="background: var(--header-bg); padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color);">
+            <div style="font-weight: bold; font-size: 18px; color: var(--acra-cyan); text-transform: uppercase; letter-spacing: 1px;">
+                {% block title %}Système ACRA{% endblock %}
+            </div>
+            
+            <div class="user-info" style="display: flex; align-items: center; gap: 10px; background: var(--input-bg); padding: 5px 15px; border-radius: 20px; border: 1px solid var(--border-color);">
+                <span style="font-size: 0.8rem; color: var(--text-muted);">{{ current_user.role.value | upper if current_user.is_authenticated else 'GUEST' }}</span>
+                <span style="font-weight: 600; color: var(--text-main);">{{ current_user.username if current_user.is_authenticated else 'Invité' }}</span>
+                <div style="width: 10px; height: 10px; background: #2ecc71; border-radius: 50%; box-shadow: 0 0 5px #2ecc71;"></div>
+            </div>
+        </header>
+
+        <main class="dashboard-content" style="padding: 25px;">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+              {% if messages %}
+                {% for category, message in messages %}
+                  {% if category != 'activate_error' %}
+                    <div class="alert alert-{{ category }}" style="padding: 15px; margin-bottom: 20px; border-radius: 8px; background: {{ '#2ecc7133' if category == 'success' else '#e74c3c33' }}; border: 1px solid {{ '#2ecc71' if category == 'success' else '#e74c3c' }}; color: var(--text-main);">
+                      <i class="fas {{ 'fa-check-circle' if category == 'success' else 'fa-exclamation-triangle' }}"></i> {{ message }}
+                    </div>
+                  {% endif %}
+                {% endfor %}
+              {% endif %}
+            {% endwith %}
+
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // Patch Chart.js dynamique
+        function updateChartsTheme() {
+            const isLight = document.body.classList.contains('light-mode');
+            Chart.defaults.color = isLight ? '#1e293b' : '#adb5bd';
+            Chart.defaults.borderColor = isLight ? '#e2e8f0' : '#1a2a3a';
+        }
+        updateChartsTheme();
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

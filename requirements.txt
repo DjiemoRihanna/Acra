@@ -2,5 +2,10 @@ flask
 flask-sqlalchemy
 flask-login
 flask-bcrypt
+flask-wtf
 psycopg2-binary
 sqlalchemy
+redis
+flask-socketio
+eventlet
+Flask-APScheduler
