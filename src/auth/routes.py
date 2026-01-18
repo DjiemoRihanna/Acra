@@ -1,19 +1,68 @@
 import os
 import random
-import datetime
 import secrets
 import re
 import csv
 import io
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, Response
+import datetime
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, Response, jsonify
 from flask_login import login_user, logout_user, login_required, current_user
 from sqlalchemy import func
-from src.models import db, User, UserRole, NetworkFlow, AuditLog
+from src.models import db, User, UserRole, NetworkFlow, AuditLog, NetworkAsset
 from src.auth.decorators import role_required
 from flask_apscheduler import APScheduler
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from datetime import datetime, time, timedelta
 
+limiter = Limiter(key_func=get_remote_address)
 scheduler = APScheduler()
 auth_bp = Blueprint('auth', __name__)
+
+# ==========================================================
+# 🛡️ SYSTÈME DE VISIBILITÉ TOTALE (AUDIT & TRACKING)
+# ==========================================================
+
+def log_event(action_type, details, resource_type=None, resource_id=None, success=True, error=None):
+    """
+    FONCTION MAÎTRESSE : Enregistre tout avec contexte complet.
+    Savoir : QUI (User), QUAND (Date), D'OÙ (IP), COMMENT (Navigateur).
+    """
+    try:
+        new_log = AuditLog(
+            action_type=action_type,
+            action_details=details,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            user_id=current_user.id if current_user.is_authenticated else None,
+            user_ip=request.remote_addr,         # Capture de l'IP source
+            user_agent=request.user_agent.string, # Capture de l'outil/OS
+            success=success,
+            error_message=str(error) if error else None
+        )
+        db.session.add(new_log)
+        db.session.commit()
+    except Exception as e:
+        print(f"❌ ERREUR CRITIQUE LOGGING : {e}")
+        db.session.rollback()
+
+@auth_bp.after_app_request
+def after_request_audit(response):
+    """
+    LOGGING AUTOMATIQUE : Capture les erreurs (404, 403, 500) 
+    même si aucune route ne le gère explicitement.
+    """
+    if response.status_code >= 400:
+        log_event(
+            "HTTP_ERROR", 
+            f"Accès anormal ou erreur sur {request.path}", 
+            resource_type="SYSTEM",
+            success=False, 
+            error=f"Statut HTTP: {response.status_code}"
+        )
+    return response
+
+
 
 # --- FONCTION UTILITAIRE DE VALIDATION ---
 def get_password_errors(password):
@@ -51,7 +100,7 @@ def setup():
 
         errors = get_password_errors(password)
         if errors:
-            flash(f"Mot de passe non conforme. Critère(s) manquant(s) : {', '.join(errors)}.", "danger")
+            flash(f"Mot de passe non conforme : {', '.join(errors)}.", "danger")
             return render_template('auth/setup.html')
 
         from src.app import bcrypt
@@ -68,17 +117,28 @@ def setup():
         try:
             db.session.add(new_admin)
             db.session.commit()
+            
+            # LOG : Enregistre l'acte de naissance du système
+            log_event(
+                action_type="SYS_SETUP", 
+                details=f"Initialisation réussie du compte Administrateur racine : {username} ({email})",
+                resource_type="USER",
+                resource_id=new_admin.id
+            )
+            
             flash("Système initialisé avec succès ! Connectez-vous.", "success")
             return redirect(url_for('auth.login'))
         except Exception as e:
             db.session.rollback()
+            # LOG : Enregistre l'échec d'installation (tentative suspecte ?)
+            log_event("SYS_SETUP_FAIL", "Échec de l'initialisation du compte admin", success=False, error=e)
             flash("Une erreur est survenue lors de la création du compte.", "danger")
-            print(f"Erreur Setup: {e}")
 
     return render_template('auth/setup.html')
 
 # --- ROUTE LOGIN (UC04 avec Bypass MFA) ---
 @auth_bp.route('/login', methods=['GET', 'POST'])
+@limiter.limit("5 per minute")
 def login():
     admin_exists = User.query.filter_by(role=UserRole.ADMIN).first()
     if not admin_exists:
@@ -92,15 +152,16 @@ def login():
         user = User.query.filter_by(email=email).first()
         from src.app import bcrypt
         
+        # 1. CAS : Identifiants corrects
         if user and user.is_active and bcrypt.check_password_hash(user.password_hash, password):
             # VERIFICATION DU COOKIE DE CONFIANCE (Bypass MFA)
             trusted_device = request.cookies.get('trusted_device')
-            if trusted_device == user.uuid: # On compare l'UUID stocké dans le cookie
+            if trusted_device == user.uuid:
                 login_user(user, remember=True)
-                db.session.add(AuditLog(action_type="AUTH_BYPASS_MFA", 
-                                        action_details="Connexion auto (Appareil de confiance)", 
-                                        user_id=user.id))
-                db.session.commit()
+                
+                # LOG : Connexion réussie sans MFA
+                log_event("AUTH_LOGIN", f"Connexion réussie via Trusted Device pour {user.username}", "USER", user.id)
+                
                 return redirect(url_for('auth.dashboard'))
 
             # SINON : Procédure MFA classique
@@ -108,8 +169,15 @@ def login():
             session['mfa_code'] = str(random.randint(100000, 999999))
             session['remember_me'] = remember 
             
+            # LOG : Initialisation MFA (on sait qu'il a le bon mot de passe)
+            log_event("AUTH_MFA_REQ", f"Code MFA généré pour {user.username}", "USER", user.id)
+            
             print(f"📧 [MFA] Code pour {user.email} : {session['mfa_code']}", flush=True)
             return redirect(url_for('auth.verify_mfa'))
+        
+        # 2. CAS : Échec de connexion (Mots de passe faux ou utilisateur inexistant)
+        # Très important pour la sécurité : on logue l'IP source de l'attaquant
+        log_event("AUTH_FAILED", f"Tentative de connexion échouée pour l'email: {email}", "USER", None, success=False, error="Identifiants invalides")
         
         flash("Identifiants invalides.", "danger")
             
@@ -195,12 +263,32 @@ def activate_account(token):
 @auth_bp.route('/dashboard')
 @login_required
 def dashboard():
+    # 1. Statistiques de base
     total_users = User.query.count()
-    audit_count = AuditLog.query.count()
-    today_start = datetime.datetime.combine(datetime.datetime.now().date(), datetime.time.min)
+    total_assets = NetworkAsset.query.count()
+    audit_count = AuditLog.query.count() # Ajouté pour le template
     
+    # 2. Simulation du statut de la sonde ( NDR )
+    is_observing = True # On peut imaginer un test réel plus tard
+    
+    # 3. Top IPs Suspectes (pour ton tableau en bas)
+    # On récupère les assets qui ont le plus de trafic comme "suspects" par défaut
+    top_assets = NetworkAsset.query.order_by(
+        (NetworkAsset.total_bytes_sent + NetworkAsset.total_bytes_received).desc()
+    ).limit(5).all()
+    
+    top_ips = []
+    for a in top_assets:
+        top_ips.append({
+            "ip": a.ip_address,
+            "score": random.randint(10, 85), # Simulation de score de menace
+            "alertes": random.randint(0, 5)   # Simulation d'alertes
+        })
+
+    # 4. Logique du graphique temporel
+    today_start = datetime.combine(datetime.now().date(), time.min)
     historical_flows = NetworkFlow.query.filter(NetworkFlow.ts >= today_start)\
-                                        .order_by(NetworkFlow.ts.asc()).all()
+                                         .order_by(NetworkFlow.ts.asc()).all()
 
     labels = [f.ts.strftime('%H:%M:%S') for f in historical_flows]
     network_data = [round(((f.orig_bytes or 0) + (f.resp_bytes or 0)) / (1024 * 1024), 4) for f in historical_flows]
@@ -209,9 +297,15 @@ def dashboard():
         labels = [datetime.datetime.now().strftime('%H:%M:%S')]
         network_data = [0]
 
-    top_ips = [{"ip": "192.168.1.101", "score": 95, "alertes": 12}]
-    return render_template('dashboard/index.html', total_users=total_users, audit_count=audit_count, 
-                           labels=labels, network_data=network_data, top_ips=top_ips)
+    # On renvoie TOUTES les variables attendues par index.html
+    return render_template('dashboard/index.html', 
+                           total_users=total_users, 
+                           total_assets=total_assets,
+                           audit_count=audit_count,
+                           is_observing=is_observing,
+                           labels=labels, 
+                           network_data=network_data, 
+                           top_ips=top_ips) # Important pour le tableau
 
 # --- GESTION DES UTILISATEURS (ADMIN) ---
 @auth_bp.route('/admin/users')
@@ -258,17 +352,44 @@ def create_user():
 def update_user():
     user_id = request.form.get('user_id')
     user = User.query.get_or_404(user_id)
-    user.username = request.form.get('username')
-    user.email = request.form.get('email')
-    new_role_str = request.form.get('role')
     
-    if user.role.name != new_role_str.upper():
-        user.role = UserRole[new_role_str.upper()]
-        db.session.add(AuditLog(action_type="USER_RANK_CHANGE", 
-                                action_details=f"Nouveau rôle pour {user.username}: {new_role_str}", 
-                                user_id=current_user.id))
-    db.session.commit()
-    flash(f"Profil de {user.username} mis à jour.", "success")
+    old_username = user.username
+    old_role = user.role.name
+    
+    new_username = request.form.get('username')
+    new_email = request.form.get('email')
+    new_role_str = request.form.get('role').upper()
+    
+    user.username = new_username
+    user.email = new_email
+    
+    # Audit spécifique si le rôle change (Escalade de privilège ?)
+    role_changed = False
+    if old_role != new_role_str:
+        user.role = UserRole[new_role_str]
+        role_changed = True
+
+    try:
+        db.session.commit()
+        
+        # Détails du log pour savoir "qui a changé quoi"
+        details = f"Utilisateur {old_username} mis à jour par {current_user.username}."
+        if role_changed:
+            details += f" CHANGEMENT DE RÔLE : {old_role} -> {new_role_str}"
+            
+        log_event(
+            action_type="USER_UPDATE",
+            details=details,
+            resource_type="USER",
+            resource_id=user.id
+        )
+        
+        flash(f"Profil de {user.username} mis à jour.", "success")
+    except Exception as e:
+        db.session.rollback()
+        log_event("USER_UPDATE_FAIL", f"Erreur lors de la mise à jour de {old_username}", success=False, error=e)
+        flash("Erreur lors de la mise à jour.", "danger")
+
     return redirect(url_for('auth.manage_users'))
 
 @auth_bp.route('/admin/users/toggle/<int:user_id>')
@@ -293,16 +414,34 @@ def toggle_user(user_id):
 @role_required(UserRole.ADMIN)
 def delete_user(user_id):
     user = User.query.get_or_404(user_id)
+    
+    # Sécurité : Empêcher de se supprimer soi-même
     if user.id == current_user.id:
-        flash("Suppression impossible.", "danger")
+        log_event("USER_DELETE_FAIL", "Tentative d'auto-suppression bloquée", "USER", user.id, success=False)
+        flash("Suppression impossible sur votre propre compte.", "danger")
     else:
         username_deleted = user.username
-        db.session.delete(user)
-        db.session.add(AuditLog(action_type="USER_DELETE", 
-                                action_details=f"Utilisateur {username_deleted} supprimé par admin", 
-                                user_id=current_user.id))
-        db.session.commit()
-        flash("Utilisateur supprimé.", "success")
+        email_deleted = user.email
+        
+        try:
+            db.session.delete(user)
+            
+            # LOG : Action irréversible enregistrée avec l'identité du responsable
+            log_event(
+                action_type="USER_DELETE", 
+                details=f"Utilisateur supprimé : {username_deleted} ({email_deleted}) par l'admin {current_user.username}", 
+                resource_type="USER", 
+                resource_id=user_id,
+                success=True
+            )
+            
+            db.session.commit()
+            flash(f"L'utilisateur {username_deleted} a été supprimé avec succès.", "success")
+        except Exception as e:
+            db.session.rollback()
+            log_event("USER_DELETE_ERROR", f"Erreur lors de la suppression de {username_deleted}", "USER", user_id, success=False, error=e)
+            flash("Une erreur est survenue lors de la suppression.", "danger")
+            
     return redirect(url_for('auth.manage_users'))
 
 @auth_bp.route('/logout')
@@ -435,34 +574,51 @@ def view_audit_logs():
     # On passe 'now' pour l'affichage de la dernière mise à jour dans le template
     return render_template('admin/audit_logs.html', 
                            logs=logs, 
-                           now=datetime.datetime.utcnow())
-
+                           now=datetime.utcnow())
 # --- EXPORTATION DES LOGS ---
 @auth_bp.route('/admin/audit-logs/export')
 @login_required
 @role_required(UserRole.ADMIN)
 def export_audit_logs():
-    # Récupérer tous les logs
+    """
+    Exporte l'historique complet pour analyse forensique externe.
+    Chaque export est lui-même logué.
+    """
+    # LOG : On enregistre QUI exporte la base de logs
+    log_event("DATA_EXPORT", "Exportation manuelle de la base d'audit complète (CSV)", resource_type="AUDIT_LOGS")
+
+    # Récupérer tous les logs sans limite
     logs = AuditLog.query.order_by(AuditLog.performed_at.desc()).all()
     
-    # Créer un fichier en mémoire
     output = io.StringIO()
     writer = csv.writer(output)
     
-    # En-tête du CSV
-    writer.writerow(['ID', 'Date (UTC)', 'Utilisateur', 'Action', 'Statut', 'IP', 'Details'])
+    # En-tête ultra-complet pour les enquêteurs
+    writer.writerow(['ID', 'DATE_UTC', 'UTILISATEUR', 'ACTION', 'STATUT', 'IP_SOURCE', 'USER_AGENT', 'DETAILS_TECHNIQUES'])
     
     for log in logs:
-        username = log.user.username if log.user else "Système"
+        username = log.user.username if log.user else "Système/Inconnu"
         status = "SUCCESS" if log.success else "FAILED"
-        writer.writerow([log.id, log.performed_at, username, log.action_type, status, log.user_ip, log.action_details])
+        writer.writerow([
+            log.id, 
+            log.performed_at, 
+            username, 
+            log.action_type, 
+            status, 
+            log.user_ip, 
+            log.user_agent, 
+            log.action_details
+        ])
     
-    # Préparer la réponse pour le navigateur
     output.seek(0)
+    
+    # Génération du nom de fichier avec horodatage
+    filename = f"IREX_AUDIT_EXPORT_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    
     return Response(
         output.getvalue(),
         mimetype="text/csv",
-        headers={"Content-disposition": "attachment; filename=audit_export.csv"}
+        headers={"Content-disposition": f"attachment; filename={filename}"}
     )
 
 def auto_export_logs():
@@ -497,3 +653,80 @@ def init_scheduler(app):
     
     # Planification : Chaque jour à 23h59
     scheduler.add_job(id='daily_export', func=auto_export_logs, trigger='cron', hour=23, minute=59)
+
+# --- API DE VISIBILITÉ RÉSEAU (ITÉRATION 1) ---
+from datetime import datetime, timedelta
+
+@auth_bp.route('/api/v1/network/topology')
+@login_required
+def get_topology_data():
+    try:
+        # --- SEUIL DE DÉCONNEXION (30 secondes) ---
+        # Si last_seen est plus vieux que ce seuil, l'appareil est "offline"
+        threshold = datetime.utcnow() - timedelta(seconds=30)
+        
+        assets = NetworkAsset.query.all()
+        nodes = []
+        edges = []
+
+        # Point central (Gateway) - Toujours Online
+        nodes.append({
+            "data": {
+                "id": "gw", 
+                "label": "PASSERELLE", 
+                "device_type": "router",
+                "status": "online",
+                "ip": "192.168.1.1"
+            }
+        })
+
+        for asset in assets:
+            # On utilise to_dict() qui contient déjà notre logique status/alive
+            asset_info = asset.to_dict()
+            
+            # Déterminer si l'appareil est actif pour l'affichage des liens
+            is_active = asset.last_seen > threshold
+            current_status = "online" if is_active else "offline"
+
+            # 1. Ajout du Noeud avec son STATUT TEMPS RÉEL
+            nodes.append({
+                "data": {
+                    "id": str(asset.id),
+                    "label": asset_info['label'],
+                    "ip": asset_info['ip'],
+                    "type": asset_info['type'],
+                    "device_type": asset_info['device_type'], # Récupéré du modèle
+                    "status": current_status,                 # Crucial pour le CSS
+                    "usage": f"{asset_info.get('usage_mb', 0)} Mo",
+                    "os": asset_info.get('os') or "Inconnu",
+                    "last_seen": asset_info['last_seen_human']
+                }
+            })
+
+            # 2. Création du lien (Edge) UNIQUEMENT si l'appareil est Online
+            # Si l'appareil est déconnecté, le lien disparaît de la carte
+            if is_active:
+                edges.append({
+                    "data": {
+                        "id": f"e{asset.id}", 
+                        "source": str(asset.id), 
+                        "target": "gw"
+                    }
+                })
+
+        return jsonify({
+            "status": "success",
+            "nodes": nodes,
+            "edges": edges
+        })
+
+    except Exception as e:
+        print(f"❌ Erreur Topologie: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# --- ROUTE POUR LA TOPOLOGIE ---
+@auth_bp.route('/topology')
+@login_required
+def network_map():
+    """Affiche la page de la topologie interactive"""
+    return render_template('network/topology.html')

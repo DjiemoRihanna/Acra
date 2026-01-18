@@ -8,4 +8,5 @@ sqlalchemy
 redis
 flask-socketio
 eventlet
-Flask-APScheduler
+Flask-APScheduler>=1.13.1
+Flask-Limiter==3.5.0

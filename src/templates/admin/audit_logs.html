@@ -6,36 +6,39 @@
 <div class="container-fluid mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h3 text-light">
-            <i class="fas fa-clipboard-check text-primary mr-2"></i>Journal d'Audit
+            <i class="fas fa-shield-alt text-cyan mr-2"></i>Journal d'Audit & Visibilité
         </h1>
         <div class="d-flex align-items-center gap-3">
             <a href="{{ url_for('auth.export_audit_logs') }}" class="btn btn-outline-warning btn-sm">
-                <i class="fas fa-file-export mr-1"></i> Exporter CSV
+                <i class="fas fa-download mr-1"></i> Export Forensique (CSV)
             </a>
-            <div class="text-muted small ml-3">
-                Dernière mise à jour : {{ now.strftime('%H:%M:%S') if now else 'En direct' }}
+            <div class="text-muted small border-left pl-3 ml-3">
+                <i class="fas fa-sync-alt fa-spin mr-1"></i> Mode : Temps Réel
             </div>
         </div>
     </div>
 
-    <div class="row mb-4">
-        <div class="col-md-12">
-            <div class="card bg-dark border-secondary shadow">
-                <div class="card-body d-flex flex-wrap align-items-center py-2">
-                    <div class="filter-group mr-4">
-                        <span class="text-secondary mr-2 small text-uppercase"><i class="fas fa-filter mr-1"></i> Statut :</span>
-                        <button class="btn btn-sm btn-outline-info mr-2 filter-btn active" onclick="filterLogs('all', this)">Tous</button>
-                        <button class="btn btn-sm btn-outline-danger mr-2 filter-btn" onclick="filterLogs('fail', this)">Échecs</button>
-                        <button class="btn btn-sm btn-outline-success filter-btn" onclick="filterLogs('auth', this)">Connexions</button>
+    <div class="card bg-dark border-secondary shadow-sm mb-4">
+        <div class="card-body py-3">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <span class="text-secondary small text-uppercase font-weight-bold mr-3">Filtrage rapide :</span>
+                    <div class="btn-group">
+                        <button class="btn btn-sm btn-outline-info filter-btn active" onclick="filterLogs('all', this)">Tous</button>
+                        <button class="btn btn-sm btn-outline-danger filter-btn" onclick="filterLogs('fail', this)">Alertes & Échecs</button>
+                        <button class="btn btn-sm btn-outline-success filter-btn" onclick="filterLogs('auth', this)">Authentification</button>
+                        <button class="btn btn-sm btn-outline-warning filter-btn" onclick="filterLogs('admin', this)">Actions Admin</button>
                     </div>
-                    
-                    <div class="search-group flex-grow-1 mt-2 mt-md-0">
-                        <div class="input-group input-group-sm">
-                            <div class="input-group-prepend">
-                                <span class="input-group-text bg-secondary border-secondary text-light"><i class="fas fa-search"></i></span>
-                            </div>
-                            <input type="text" id="logSearch" class="form-control bg-dark border-secondary text-light" placeholder="Rechercher une IP, un utilisateur ou une action..." onkeyup="searchTable()">
+                </div>
+                <div class="col-md-6 mt-2 mt-md-0">
+                    <div class="input-group">
+                        <div class="input-group-prepend">
+                            <span class="input-group-text bg-transparent border-secondary text-secondary">
+                                <i class="fas fa-search"></i>
+                            </span>
                         </div>
+                        <input type="text" id="logSearch" class="form-control bg-dark border-secondary text-light" 
+                               placeholder="Rechercher IP, Utilisateur, Action ou Erreur..." onkeyup="searchTable()">
                     </div>
                 </div>
             </div>
@@ -43,51 +46,79 @@
     </div>
 
     <div class="card bg-dark border-secondary shadow">
-        <div class="card-header bg-secondary text-white border-secondary">
-            <h5 class="mb-0"><i class="fas fa-list mr-2"></i>Actions Récentes</h5>
+        <div class="card-header bg-dark-2 border-secondary d-flex justify-content-between align-items-center">
+            <span class="font-weight-bold"><i class="fas fa-stream mr-2"></i>Flux des Événements</span>
+            <span class="badge badge-secondary">{{ logs|length }} événements enregistrés</span>
         </div>
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table class="table table-dark table-hover mb-0" id="auditTable">
                     <thead>
-                        <tr class="text-secondary small text-uppercase">
-                            <th class="border-secondary">Horodatage (UTC)</th>
-                            <th class="border-secondary">Utilisateur</th>
-                            <th class="border-secondary">Action</th>
+                        <tr class="text-secondary small text-uppercase bg-darker">
+                            <th class="border-secondary py-3">Horodatage</th>
+                            <th class="border-secondary">Acteur</th>
+                            <th class="border-secondary">Type d'Action</th>
                             <th class="border-secondary">Statut</th>
-                            <th class="border-secondary">Source IP</th>
-                            <th class="border-secondary">Détails</th>
+                            <th class="border-secondary">Source IP / Agent</th>
+                            <th class="border-secondary">Détails de l'Événement</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for log in logs %}
-                        <tr class="border-secondary log-row {% if not log.success %}row-fail{% endif %} {% if 'AUTH' in log.action_type or 'LOGIN' in log.action_type %}row-auth{% endif %}">
-                            <td class="text-info font-weight-bold">{{ log.performed_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-                            <td class="user-cell">
+                        <tr class="log-row border-secondary 
+                                   {% if not log.success %}row-fail bg-soft-danger{% endif %} 
+                                   {% if 'AUTH' in log.action_type or 'LOGIN' in log.action_type %}row-auth{% endif %}
+                                   {% if 'USER' in log.action_type or 'SYS' in log.action_type %}row-admin{% endif %}">
+                            
+                            <td class="text-nowrap">
+                                <small class="text-info font-weight-bold">{{ log.performed_at.strftime('%H:%M:%S') }}</small><br>
+                                <small class="text-muted">{{ log.performed_at.strftime('%d/%m/%Y') }}</small>
+                            </td>
+
+                            <td>
                                 {% if log.user %}
-                                    <span class="badge badge-outline-light border px-2">{{ log.user.username }}</span>
+                                    <span class="badge badge-outline-cyan font-weight-normal">
+                                        <i class="fas fa-user-circle mr-1"></i>{{ log.user.username }}
+                                    </span>
                                 {% else %}
-                                    <span class="text-muted font-italic">Système</span>
+                                    <span class="text-secondary font-italic small"><i class="fas fa-robot mr-1"></i>SYSTEM</span>
                                 {% endif %}
                             </td>
-                            <td><code class="text-warning">{{ log.action_type }}</code></td>
+
+                            <td>
+                                <span class="badge badge-dark border border-secondary text-warning">
+                                    {{ log.action_type }}
+                                </span>
+                            </td>
+
                             <td>
                                 {% if log.success %}
-                                    <span class="badge badge-success"><i class="fas fa-check-circle mr-1"></i> OK</span>
+                                    <span class="text-success small font-weight-bold"><i class="fas fa-check-circle mr-1"></i>OK</span>
                                 {% else %}
-                                    <span class="badge badge-danger" title="{{ log.error_message }}"><i class="fas fa-exclamation-triangle mr-1"></i> FAIL</span>
+                                    <span class="text-danger small font-weight-bold" title="{{ log.error_message }}">
+                                        <i class="fas fa-shield-virus mr-1"></i>CRITICAL
+                                    </span>
                                 {% endif %}
                             </td>
-                            <td class="ip-cell"><small class="text-muted">{{ log.user_ip or '0.0.0.0' }}</small></td>
+
+                            <td class="text-nowrap">
+                                <code class="text-light small">{{ log.user_ip or 'Localhost' }}</code>
+                                <i class="fas fa-info-circle text-muted ml-1" data-toggle="tooltip" title="{{ log.user_agent }}"></i>
+                            </td>
+
                             <td>
-                                <small class="text-light" title="{{ log.user_agent }}">{{ log.action_details }}</small>
+                                <div class="text-light small detail-text">{{ log.action_details }}</div>
+                                {% if log.error_message %}
+                                <div class="text-danger x-small mt-1 font-italic">{{ log.error_message[:100] }}...</div>
+                                {% endif %}
                             </td>
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="6" class="text-center py-5 text-muted">
-                                <i class="fas fa-folder-open fa-3x mb-3"></i><br>
-                                Aucun log d'audit trouvé.
+                            <td colspan="6" class="text-center py-5">
+                                <div class="text-muted">
+                                    <i class="fas fa-ghost fa-3x mb-3"></i><br>Silence radio. Aucun log détecté.
+                                </div>
                             </td>
                         </tr>
                         {% endfor %}
@@ -95,71 +126,68 @@
                 </table>
             </div>
         </div>
-        <div class="card-footer bg-dark border-secondary d-flex justify-content-between">
-            <span class="text-muted small">Total: {{ logs|length }} entrées</span>
-            <small class="text-secondary font-italic">Stratégie de rétention UC09 : Conservation illimitée.</small>
-        </div>
     </div>
 </div>
+
+
+
+<style>
+    /* Couleurs SOC ACRA */
+    :root { --acra-cyan: #00bcd4; --dark-bg-2: #1a1d21; }
+    .bg-dark-2 { background-color: var(--dark-bg-2); }
+    .bg-darker { background-color: #0b0c0e; }
+    .text-cyan { color: var(--acra-cyan); }
+    
+    /* Indicateurs de ligne */
+    .row-fail { border-left: 4px solid #dc3545 !important; }
+    .bg-soft-danger { background-color: rgba(220, 53, 69, 0.05); }
+    .log-row:hover { background-color: rgba(255,255,255,0.05) !important; cursor: default; }
+
+    /* Badges personnalisés */
+    .badge-outline-cyan { border: 1px solid var(--acra-cyan); color: var(--acra-cyan); background: transparent; }
+    .detail-text { max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .detail-text:hover { white-space: normal; }
+    .x-small { font-size: 0.75rem; }
+</style>
+
 {% endblock %}
 
 {% block scripts %}
 <script>
-// --- FILTRE PAR BOUTONS (Statut) ---
+$(function () { $('[data-toggle="tooltip"]').tooltip() }); // Activation des bulles d'info
+
 function filterLogs(criteria, btn) {
     const rows = document.querySelectorAll('.log-row');
     document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
 
     rows.forEach(row => {
-        if (criteria === 'all') {
-            row.setAttribute('data-status-visible', 'true');
-        } else if (criteria === 'fail') {
-            row.classList.contains('row-fail') ? row.setAttribute('data-status-visible', 'true') : row.setAttribute('data-status-visible', 'false');
-        } else if (criteria === 'auth') {
-            row.classList.contains('row-auth') ? row.setAttribute('data-status-visible', 'true') : row.setAttribute('data-status-visible', 'false');
-        }
+        let visible = false;
+        if (criteria === 'all') visible = true;
+        else if (criteria === 'fail') visible = row.classList.contains('row-fail');
+        else if (criteria === 'auth') visible = row.classList.contains('row-auth');
+        else if (criteria === 'admin') visible = row.classList.contains('row-admin');
+        
+        row.setAttribute('data-status-visible', visible);
         applyCombinedFilters(row);
     });
 }
 
-// --- FILTRE PAR BARRE DE RECHERCHE ---
 function searchTable() {
     const input = document.getElementById('logSearch').value.toUpperCase();
     const rows = document.querySelectorAll('.log-row');
 
     rows.forEach(row => {
         const text = row.textContent.toUpperCase();
-        text.includes(input) ? row.setAttribute('data-search-visible', 'true') : row.setAttribute('data-search-visible', 'false');
+        row.setAttribute('data-search-visible', text.includes(input));
         applyCombinedFilters(row);
     });
 }
 
-// --- LOGIQUE DE COMBINAISON (Recherche + Boutons) ---
 function applyCombinedFilters(row) {
     const statusVis = row.getAttribute('data-status-visible') !== 'false';
     const searchVis = row.getAttribute('data-search-visible') !== 'false';
-
-    if (statusVis && searchVis) {
-        row.style.display = '';
-    } else {
-        row.style.display = 'none';
-    }
+    row.style.display = (statusVis && searchVis) ? '' : 'none';
 }
 </script>
-
-<style>
-    .filter-btn.active {
-        background-color: var(--acra-cyan) !important;
-        color: #000 !important;
-        border-color: var(--acra-cyan) !important;
-        font-weight: bold;
-    }
-    .log-row { transition: opacity 0.2s ease; }
-    #logSearch:focus {
-        border-color: var(--acra-cyan);
-        box-shadow: 0 0 0 0.2rem rgba(0, 188, 212, 0.25);
-    }
-    .badge-outline-light { border: 1px solid #454d55; color: #adb5bd; }
-</style>
 {% endblock %}

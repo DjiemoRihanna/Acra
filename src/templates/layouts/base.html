@@ -116,7 +116,7 @@
                 <i class="fas fa-th-large"></i> <span>Dashboard SOC</span>
             </a>
 
-            <a href="#" class="nav-item"><i class="fas fa-project-diagram"></i> <span>Topologie Réseau</span></a>
+            <a href="{{ url_for('auth.network_map') }}" class="nav-item {{ 'active' if request.endpoint == 'auth.network_map' }}"><i class="fas fa-project-diagram"></i> <span>Topologie Réseau</span></a>
             <a href="#" class="nav-item"><i class="fas fa-exclamation-triangle"></i> <span>Centre d'Alertes</span></a>
             <a href="{{ url_for('auth.view_audit_logs') }}" class="nav-item"><i class="fas fa-terminal"></i> <span>Log Explorer</span></a>
             <a href="#" class="nav-item"><i class="fas fa-hand-fist"></i> <span>Console de Riposte</span></a>
