@@ -152,9 +152,13 @@
     function syncChartWidth() {
         if (networkFlowChart) {
             const pointCount = networkFlowChart.data.labels.length;
-            const minWidthPerPoint = 60; // Espace entre chaque point
-            const calculatedWidth = pointCount * minWidthPerPoint;
+            // On réduit de 60 à 20 pixels par point pour gagner de la place
+            const minWidthPerPoint = 20; 
+            let calculatedWidth = pointCount * minWidthPerPoint;
             const containerWidth = scrollArea.clientWidth;
+
+            // ON LIMITE la largeur à 15 000 pixels max pour éviter le crash Canvas
+            if (calculatedWidth > 15000) calculatedWidth = 15000;
 
             if (calculatedWidth > containerWidth) {
                 chartWrapper.style.width = calculatedWidth + "px";
@@ -162,7 +166,6 @@
             } else {
                 chartWrapper.style.width = "100%";
             }
-            // Toujours scroller vers la fin (le présent)
             scrollArea.scrollLeft = scrollArea.scrollWidth;
         }
     }

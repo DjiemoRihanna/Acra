@@ -18,13 +18,19 @@ services:
       - "6379:6379"
 
   zeek:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.zeek
-    container_name: acra-zeek
-    command: ["zeek", "-i", "eth0", "local", "LogAscii::use_json=T"]
-    volumes:
-      - ./data/zeek_logs:/usr/local/zeek/logs
+      build:
+        context: .
+        dockerfile: docker/Dockerfile.zeek
+      container_name: acra-zeek
+      # On écoute "any" pour capter toutes les interfaces de Kali
+      command: ["zeek", "-i", "eth0", "local", "LogAscii::use_json=T"]
+      # network_mode host permet de voir le vrai trafic eth0/wlan0 de ta machine
+      network_mode: "host" 
+      cap_add:
+        - NET_ADMIN
+        - NET_RAW
+      volumes:
+        - ./data/zeek_logs:/usr/local/zeek/logs
 
   web:
     build:

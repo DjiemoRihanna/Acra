@@ -1,5 +1,6 @@
 document.addEventListener('DOMContentLoaded', function() {
     const canvasFlow = document.getElementById('networkFlowChart');
+    console.log("Graphique initialisé avec :", networkLabels.length, "points");
     
     // --- 1. GRAPHIQUE DES FLUX (MODE TIMELINE INFINIE) ---
     if (canvasFlow && typeof networkLabels !== 'undefined') {
@@ -39,7 +40,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         ticks: { 
                             color: '#888', 
                             maxRotation: 0,
-                            autoSkip: false // On force l'affichage de tous les labels
+                            autoSkip: true,
+                            maxTicksLimit: 20
                         }
                     },
                     y: {
