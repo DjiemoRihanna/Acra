@@ -11,7 +11,7 @@
                         <div id="status-indicator" class="small text-success me-3">
                             <i class="fas fa-sync fa-spin me-1"></i> Live
                         </div>
-                        <button class="btn btn-sm btn-outline-info" onclick="manualRefresh()"> 
+                        <button class="btn btn-sm btn-outline-info" onclick="manualRefresh()" title="Forcer la mise à jour"> 
                             <i class="fas fa-redo-alt"></i>
                         </button>
                     </div>
@@ -24,7 +24,7 @@
         
         <div class="col-md-3">
             <div class="card bg-dark text-white border-secondary h-100 shadow">
-                <div class="card-header border-secondary bg-secondary">
+                <div class="card-header border-secondary bg-secondary text-white">
                     <h5 class="mb-0"><i class="fas fa-microscope me-2"></i>Détails Asset</h5>
                 </div>
                 <div id="details-panel" class="card-body">
@@ -46,32 +46,35 @@
 <script>
 let cy = null;
 let updateInterval = null;
-
-// --- CONFIGURATION ---
-const REFRESH_RATE = 5000; // 5 secondes
+const REFRESH_RATE = 5000;
 
 function loadData(isInitial = false) {
     fetch('/auth/api/v1/network/topology') 
-        .then(res => {
-            if (!res.ok) throw new Error("Erreur serveur : " + res.status);
-            return res.json();
-        })
+        .then(res => res.json())
         .then(response => {
             if (isInitial || !cy) {
                 initGraph(response.nodes, response.edges);
             } else {
                 updateGraph(response.nodes, response.edges);
             }
+            updateStatus(true);
         })
         .catch(err => {
-            console.error("Erreur de chargement SOC:", err);
-            const status = document.getElementById('status-indicator');
-            status.innerHTML = '<i class="fas fa-exclamation-triangle text-danger"></i> Déconnecté';
-            status.classList.replace('text-success', 'text-danger');
+            console.error("Erreur Topologie:", err);
+            updateStatus(false);
         });
 }
 
-// ... (garder le début du script identique jusqu'à initGraph) ...
+function updateStatus(isOnline) {
+    const status = document.getElementById('status-indicator');
+    if (isOnline) {
+        status.innerHTML = '<i class="fas fa-sync fa-spin me-1"></i> Live';
+        status.className = 'small text-success me-3';
+    } else {
+        status.innerHTML = '<i class="fas fa-exclamation-triangle text-danger"></i> Erreur Serveur';
+        status.className = 'small text-danger me-3';
+    }
+}
 
 function initGraph(nodes, edges) {
     cy = cytoscape({
@@ -83,39 +86,44 @@ function initGraph(nodes, edges) {
                 style: {
                     'label': 'data(label)',
                     'color': '#bdc3c7',
-                    'font-size': '11px',
+                    'font-size': '10px',
                     'text-valign': 'bottom',
                     'text-margin-y': '8px',
-                    'width': '50px',
-                    'height': '50px',
+                    'width': '45px',
+                    'height': '45px',
                     'background-fit': 'contain',
                     'background-color': 'rgba(0,0,0,0)',
-                    'text-background-opacity': 0.6,
+                    'text-background-opacity': 0.7,
                     'text-background-color': '#000',
                     'text-background-shape': 'roundrectangle',
                     'text-background-padding': '3px'
                 }
             },
-            // --- LOGIQUE VISUELLE STATUS ---
+            // États
             {
                 selector: 'node[status = "offline"]',
-                style: {
-                    'opacity': 0.4,           // Devient transparent
-                    'filter': 'grayscale(1)', // Devient gris
-                    'color': '#666'
-                }
+                style: { 'opacity': 0.3, 'filter': 'grayscale(1)', 'color': '#ff4444' }
             },
+            // Types d'icônes dynamiques
             {
                 selector: 'node[device_type = "router"]',
-                style: { 'background-image': 'https://img.icons8.com/fluency/96/router.png', 'width': '65px', 'height': '65px' }
-            },
-            {
-                selector: 'node[device_type = "computer"]',
-                style: { 'background-image': 'https://img.icons8.com/fluency/96/laptop.png' }
+                style: { 'background-image': 'https://img.icons8.com/fluency/96/router.png', 'width': '60px', 'height': '60px' }
             },
             {
                 selector: 'node[device_type = "server"]',
                 style: { 'background-image': 'https://img.icons8.com/fluency/96/server.png' }
+            },
+            {
+                selector: 'node[device_type = "smartphone"]',
+                style: { 'background-image': 'https://img.icons8.com/fluency/96/smartphone.png' }
+            },
+            {
+                selector: 'node[device_type = "printer"]',
+                style: { 'background-image': 'https://img.icons8.com/fluency/96/print.png' }
+            },
+            {
+                selector: 'node[device_type = "computer"]',
+                style: { 'background-image': 'https://img.icons8.com/fluency/96/laptop.png' }
             },
             {
                 selector: 'node[device_type = "cloud"]',
@@ -125,133 +133,99 @@ function initGraph(nodes, edges) {
                 selector: 'edge',
                 style: {
                     'width': 2,
-                    'line-color': '#00bcd4', // Cyan pour les liens actifs
+                    'line-color': '#00bcd4',
                     'curve-style': 'bezier',
-                    'opacity': 0.4,
+                    'opacity': 0.3,
                     'target-arrow-shape': 'none'
                 }
             },
             {
                 selector: 'node:selected',
-                style: {
-                    'border-width': '3px',
-                    'border-color': '#ff9800',
-                    'border-opacity': 1
-                }
+                style: { 'border-width': '2px', 'border-color': '#ff9800', 'border-opacity': 1 }
             }
         ],
-        layout: { name: 'cose', animate: true, nodeRepulsion: 8000 }
+        layout: { name: 'cose', animate: true, nodeRepulsion: 10000, padding: 50 }
     });
 
-    cy.on('tap', 'node', function(evt){
-        renderDetails(evt.target.data(), evt.target.style('background-image'));
-    });
+    cy.on('tap', 'node', (evt) => renderDetails(evt.target.data(), evt.target.style('background-image')));
 }
 
 function updateGraph(newNodes, newEdges) {
-    let structureChanged = false;
+    let changed = false;
 
-    // 1. Mise à jour ou Ajout des nœuds
-    newNodes.forEach(nodeData => {
-        let existing = cy.$id(nodeData.data.id);
-        if (existing.length === 0) {
-            cy.add(nodeData);
-            structureChanged = true;
+    // Mise à jour des Noeuds
+    newNodes.forEach(n => {
+        let node = cy.$id(n.data.id);
+        if (node.length === 0) {
+            cy.add(n);
+            changed = true;
         } else {
-            // Met à jour les données (status, usage, etc.)
-            // Cytoscape rafraîchira le style automatiquement grâce au sélecteur node[status="offline"]
-            existing.data(nodeData.data);
+            node.data(n.data); // Update status/usage
         }
     });
 
-    // 2. Gestion dynamique des liens (Edges)
-    // On supprime les liens qui n'existent plus dans la nouvelle réponse (appareils devenus offline)
-    let currentEdgeIds = newEdges.map(e => e.data.id);
-    cy.edges().forEach(edge => {
-        if (!currentEdgeIds.includes(edge.id())) {
-            cy.remove(edge);
-            structureChanged = true;
-        }
+    // Nettoyage et ajout des Edges
+    let newEdgeIds = newEdges.map(e => e.data.id);
+    cy.edges().forEach(e => {
+        if (!newEdgeIds.includes(e.id())) { cy.remove(e); changed = true; }
+    });
+    newEdges.forEach(e => {
+        if (cy.$id(e.data.id).length === 0) { cy.add(e); changed = true; }
     });
 
-    // On ajoute les nouveaux liens (appareils revenus online)
-    newEdges.forEach(edgeData => {
-        if (cy.$id(edgeData.data.id).length === 0) {
-            cy.add(edgeData);
-            structureChanged = true;
-        }
-    });
-
-    if (structureChanged) {
-        // On ne relance le layout que si nécessaire pour éviter que la carte ne saute tout le temps
+    // Ne relancer le layout que si de nouveaux éléments apparaissent
+    if (changed) {
         // cy.layout({ name: 'cose', animate: true, fit: false }).run();
     }
 }
-// ... (garder le reste identique) ...
 
 function renderDetails(data, iconUrl) {
-    const cleanIcon = iconUrl.replace('url("','').replace('")','');
+    const cleanIcon = iconUrl.replace(/url\(['"]?([^'"]*)['"]?\)/, '$1');
     document.getElementById('details-panel').innerHTML = `
         <div class="text-center mb-4">
-            <img src="${cleanIcon}" width="80" class="mb-2">
-            <h5 class="text-info"><b>${data.label}</b></h5>
-            <span class="badge bg-dark border border-info text-info small">Analyse Active</span>
+            <img src="${cleanIcon}" width="64" class="mb-2">
+            <h6 class="text-info mb-0"><b>${data.label}</b></h6>
+            <small class="text-${data.status === 'online' ? 'success' : 'danger'} text-uppercase">${data.status}</small>
         </div>
         <div class="list-group list-group-flush bg-transparent">
-            <div class="list-group-item bg-transparent text-white border-secondary px-0">
-                <div class="d-flex justify-content-between">
-                    <small class="text-muted">ADRESSE IP</small>
-                    <code class="text-cyan">${data.ip || 'N/A'}</code>
-                </div>
+            <div class="list-group-item bg-transparent text-white border-secondary px-0 d-flex justify-content-between">
+                <small class="text-muted">IP</small>
+                <code class="text-cyan">${data.ip}</code>
             </div>
-            <div class="list-group-item bg-transparent text-white border-secondary px-0">
-                <div class="d-flex justify-content-between">
-                    <small class="text-muted">TYPE</small>
-                    <span class="text-uppercase small">${data.device_type}</span>
-                </div>
+            <div class="list-group-item bg-transparent text-white border-secondary px-0 d-flex justify-content-between">
+                <small class="text-muted">TYPE</small>
+                <span class="badge bg-outline-info text-uppercase">${data.device_type}</span>
             </div>
-            <div class="list-group-item bg-transparent text-white border-secondary px-0">
-                <div class="d-flex justify-content-between">
-                    <small class="text-muted">DÉBIT DÉTECTÉ</small>
-                    <span class="text-warning">${data.usage || '0 Mo'}</span>
-                </div>
+            <div class="list-group-item bg-transparent text-white border-secondary px-0 d-flex justify-content-between">
+                <small class="text-muted">TRAFIC</small>
+                <span class="text-warning">${data.usage || '0 Mo'}</span>
             </div>
-            <div class="list-group-item bg-transparent text-white border-secondary px-0">
-                <div class="d-flex justify-content-between">
-                    <small class="text-muted">SYSTÈME (OS)</small>
-                    <small>${data.os || 'Inconnu'}</small>
-                </div>
+            <div class="list-group-item bg-transparent text-white border-secondary px-0 d-flex justify-content-between">
+                <small class="text-muted">VU LE</small>
+                <small>${data.last_seen}</small>
             </div>
         </div>
-        <div class="mt-4 p-2 bg-darker rounded border border-secondary">
-             <canvas id="miniTrafficChart" style="height:50px; width:100%"></canvas>
-             <div class="text-center x-small text-muted mt-1">Activité réseau (60s)</div>
+        <div class="mt-4 text-center">
+            <button class="btn btn-sm btn-outline-danger w-100 py-1" onclick="alert('Scan de vulnérabilités lancé sur ${data.ip}')">
+                <i class="fas fa-shield-alt me-1"></i> SCAN VULN
+            </button>
         </div>
     `;
 }
 
-function manualRefresh() {
-    loadData(false);
-}
+function manualRefresh() { loadData(false); }
 
-// Lancement automatique
 document.addEventListener('DOMContentLoaded', () => {
     loadData(true);
-    // Démarrage du polling
-    updateInterval = setInterval(() => loadData(false), REFRESH_RATE);
+    setInterval(() => loadData(false), REFRESH_RATE);
 });
 </script>
 
 <style>
-    #cy { transition: all 0.5s ease; }
-    .bg-darker { background-color: #050505; }
-    .text-cyan { color: #00bcd4; }
-    .x-small { font-size: 0.7rem; }
-    
-    /* Animation du badge "Live" */
-    .fa-sync.fa-spin { animation-duration: 3s; }
-    
-    /* Panel de détails */
-    .list-group-item { border-bottom-style: dashed !important; }
+    #cy { transition: opacity 0.3s ease; }
+    .bg-darker { background-color: #08090a; }
+    .text-cyan { color: #00e5ff; }
+    .list-group-item { border-bottom: 1px dashed #333 !important; font-size: 0.85rem; }
+    .badge-outline-info { border: 1px solid #00bcd4; color: #00bcd4; }
 </style>
 {% endblock %}
