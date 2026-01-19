@@ -5,6 +5,7 @@ import re
 import csv
 import io
 import datetime
+import netifaces
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, Response, jsonify
 from flask_login import login_user, logout_user, login_required, current_user
 from sqlalchemy import func
@@ -294,7 +295,7 @@ def dashboard():
     network_data = [round(((f.orig_bytes or 0) + (f.resp_bytes or 0)) / (1024 * 1024), 4) for f in historical_flows]
 
     if not labels:
-        labels = [datetime.datetime.now().strftime('%H:%M:%S')]
+        labels = [datetime.now().strftime('%H:%M:%S')]
         network_data = [0]
 
     # On renvoie TOUTES les variables attendues par index.html
@@ -654,76 +655,80 @@ def init_scheduler(app):
     # Planification : Chaque jour à 23h59
     scheduler.add_job(id='daily_export', func=auto_export_logs, trigger='cron', hour=23, minute=59)
 
-# --- API DE VISIBILITÉ RÉSEAU (ITÉRATION 1) ---
-from datetime import datetime, timedelta
+# --- API DE VISIBILITÉ RÉSEAU ---
 
 @auth_bp.route('/api/v1/network/topology')
 @login_required
 def get_topology_data():
     try:
-        # --- SEUIL DE DÉCONNEXION (30 secondes) ---
-        # Si last_seen est plus vieux que ce seuil, l'appareil est "offline"
+        # --- 1. DETECTION AUTO DE LA PASSERELLE ---
+        # On interroge la table de routage du système d'exploitation
+        gws = netifaces.gateways()
+        # On récupère l'IP de la passerelle par défaut (IPv4)
+        default_gw_ip = gws['default'][netifaces.AF_INET][0] 
+
+        # --- 2. CONFIGURATION DU SEUIL ---
         threshold = datetime.utcnow() - timedelta(seconds=30)
-        
         assets = NetworkAsset.query.all()
+        
         nodes = []
         edges = []
 
-        # Point central (Gateway) - Toujours Online
-        nodes.append({
-            "data": {
-                "id": "gw", 
-                "label": "PASSERELLE", 
-                "device_type": "router",
-                "status": "online",
-                "ip": "192.168.1.1"
-            }
-        })
+        # On cherche si la passerelle est déjà un asset connu en base de données
+        gw_asset = NetworkAsset.query.filter_by(ip_address=default_gw_ip).first()
+        
+        # ID pivot pour les connexions (soit l'ID BDD, soit un ID virtuel "auto_gw")
+        master_gw_id = str(gw_asset.id) if gw_asset else "auto_gw"
+
+        # Si la passerelle n'est PAS en base, on crée un noeud virtuel pour le centre de la carte
+        if not gw_asset:
+            nodes.append({
+                "data": {
+                    "id": "auto_gw",
+                    "label": f"PASSERELLE ({default_gw_ip})",
+                    "device_type": "router",
+                    "status": "online",
+                    "ip": default_gw_ip
+                }
+            })
 
         for asset in assets:
-            # On utilise to_dict() qui contient déjà notre logique status/alive
             asset_info = asset.to_dict()
-            
-            # Déterminer si l'appareil est actif pour l'affichage des liens
             is_active = asset.last_seen > threshold
             current_status = "online" if is_active else "offline"
+            
+            # Si l'IP de l'asset actuel correspond à l'IP de la passerelle détectée
+            is_this_the_gw = (asset.ip_address == default_gw_ip)
 
-            # 1. Ajout du Noeud avec son STATUT TEMPS RÉEL
             nodes.append({
                 "data": {
                     "id": str(asset.id),
-                    "label": asset_info['label'],
+                    "label": "🌐 PASSERELLE" if is_this_the_gw else asset_info['label'],
                     "ip": asset_info['ip'],
-                    "type": asset_info['type'],
-                    "device_type": asset_info['device_type'], # Récupéré du modèle
-                    "status": current_status,                 # Crucial pour le CSS
+                    "device_type": "router" if is_this_the_gw else asset_info['device_type'],
+                    "status": current_status,
                     "usage": f"{asset_info.get('usage_mb', 0)} Mo",
                     "os": asset_info.get('os') or "Inconnu",
                     "last_seen": asset_info['last_seen_human']
                 }
             })
 
-            # 2. Création du lien (Edge) UNIQUEMENT si l'appareil est Online
-            # Si l'appareil est déconnecté, le lien disparaît de la carte
-            if is_active:
+            # --- 3. CREATION DES LIENS ---
+            # Tout appareil actif se connecte à l'ID de la passerelle (sauf elle-même)
+            if is_active and not is_this_the_gw:
                 edges.append({
                     "data": {
-                        "id": f"e{asset.id}", 
-                        "source": str(asset.id), 
-                        "target": "gw"
+                        "id": f"e{asset.id}",
+                        "source": str(asset.id),
+                        "target": master_gw_id
                     }
                 })
 
-        return jsonify({
-            "status": "success",
-            "nodes": nodes,
-            "edges": edges
-        })
+        return jsonify({"status": "success", "nodes": nodes, "edges": edges})
 
     except Exception as e:
-        print(f"❌ Erreur Topologie: {str(e)}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
+        print(f"❌ Erreur Topologie Auto: {str(e)}")
+        return jsonify({"status": "error", "message": "Impossible de détecter la topologie"}), 500
 # --- ROUTE POUR LA TOPOLOGIE ---
 @auth_bp.route('/topology')
 @login_required

@@ -10,3 +10,4 @@ flask-socketio
 eventlet
 Flask-APScheduler>=1.13.1
 Flask-Limiter==3.5.0
+netifaces
