@@ -7,7 +7,13 @@ services:
       POSTGRES_USER: acra_admin
       POSTGRES_PASSWORD: changeme123
     volumes:
-      - ./data/pgdata:/var/lib/postgresql/data # Pour ne pas perdre tes données au redémarrage
+      - ./data/pgdata:/var/lib/postgresql/data
+    # Force Docker à vérifier que la DB accepte réellement les connexions
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U acra_admin -d acra"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
@@ -16,19 +22,17 @@ services:
       - "6379:6379"
 
   zeek:
-      build:
-        context: .
-        dockerfile: docker/Dockerfile.zeek
-      container_name: acra-zeek
-      # On écoute "any" pour capter toutes les interfaces de Kali
-      command: ["zeek", "-i", "eth0", "-C", "local", "LogAscii::use_json=T"]
-      # network_mode host permet de voir le vrai trafic eth0/wlan0 de ta machine
-      network_mode: "host" 
-      cap_add:
-        - NET_ADMIN
-        - NET_RAW
-      volumes:
-        - ./data/zeek_logs:/usr/local/zeek/logs
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.zeek
+    container_name: acra-zeek
+    command: ["zeek", "-i", "eth0", "-C", "local", "LogAscii::use_json=T"]
+    network_mode: "host" 
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - ./data/zeek_logs:/usr/local/zeek/logs
 
   web:
     build:
@@ -36,8 +40,10 @@ services:
       dockerfile: docker/Dockerfile.web
     container_name: acra-web
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
     ports:
       - "5000:5000"
     volumes:
@@ -47,31 +53,28 @@ services:
     environment:
       - PYTHONPATH=/app
       - DATABASE_URL=postgresql://acra_admin:changeme123@postgres:5432/acra
-      - REDIS_URL=redis://acra-redis:6379/0 # Corrigé pour correspondre au nom du container redis
+      - REDIS_URL=redis://acra-redis:6379/0
       - PYTHONUNBUFFERED=1 
       - PYTHONWARNINGS=ignore::DeprecationWarning
 
-  # --- AJOUT DU STREAMER AUTOMATIQUE ---
   zeek-streamer:
-      build:
-        context: .
-        dockerfile: docker/Dockerfile.web
-      container_name: acra-streamer
-      # AJOUT DU -u POUR LE TEMPS RÉEL (Important !)
-      command: python src/ingestion/zeek_stream.py
-      depends_on:
-        - postgres
-        - redis
-        - zeek
-      volumes:
-        - .:/app
-        # On s'assure que le chemin est EXACTEMENT le même que celui défini dans le script Python
-        - ./data/zeek_logs:/app/data/zeek_logs
-      environment:
-        - PYTHONPATH=/app
-        # Utilisation du nom du service "postgres" et non localhost
-        - DATABASE_URL=postgresql://acra_admin:changeme123@postgres:5432/acra
-        - REDIS_URL=redis://acra-redis:6379/0
-        - PYTHONUNBUFFERED=1
-        - PYTHONWARNINGS=ignore::DeprecationWarning
-      restart: always
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    container_name: acra-streamer
+    # Utilisation de python -u pour forcer l'affichage des logs en temps réel sans buffer
+    command: python -u src/ingestion/zeek_stream.py
+    depends_on:
+      postgres:
+        condition: service_healthy
+      zeek:
+        condition: service_started
+    volumes:
+      - .:/app
+      - ./data/zeek_logs:/app/data/zeek_logs
+    environment:
+      - PYTHONPATH=/app
+      - DATABASE_URL=postgresql://acra_admin:changeme123@postgres:5432/acra
+      - REDIS_URL=redis://acra-redis:6379/0
+      - PYTHONUNBUFFERED=1
+    restart: always
