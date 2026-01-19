@@ -101,23 +101,6 @@ function updateReq(id, valid) {
         if(icon) icon.className = valid ? 'fas fa-check-circle' : 'fas fa-circle';
     }
 }
-
-document.getElementById('setupForm').onsubmit = function(e) {
-    const pwd = document.getElementById('password').value;
-    const confirm = document.getElementById('confirm_password').value;
-    const score = [pwd.length >= 12, /[A-Z]/.test(pwd), /[0-9]/.test(pwd), /[!@#$%^&*]/.test(pwd)].filter(Boolean).length;
-
-    if (score < 4) {
-        alert("Sécurité insuffisante : tous les critères doivent être cochés.");
-        e.preventDefault();
-        return;
-    }
-    
-    if (pwd !== confirm) {
-        alert("Les mots de passe ne correspondent pas !");
-        e.preventDefault();
-    }
-};
 </script>
 
 <style>

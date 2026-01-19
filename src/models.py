@@ -47,13 +47,13 @@ class NetworkFlow(db.Model):
     __tablename__ = 'network_flows'
     id = db.Column(db.BigInteger, primary_key=True)
     ts = db.Column(db.DateTime, index=True) 
-    uid = db.Column(db.String(20), unique=True)
-    source_ip = db.Column(db.String(45), index=True)
+    uid = db.Column(db.String(100), unique=True)
+    source_ip = db.Column(db.String(100), index=True)
     source_port = db.Column(db.Integer)
-    dest_ip = db.Column(db.String(45), index=True)
+    dest_ip = db.Column(db.String(100), index=True)
     dest_port = db.Column(db.Integer)
-    protocol = db.Column(db.String(10))
-    service = db.Column(db.String(20))
+    protocol = db.Column(db.String(100))
+    service = db.Column(db.String(100))
     orig_bytes = db.Column(db.BigInteger, default=0)
     resp_bytes = db.Column(db.BigInteger, default=0)
 
