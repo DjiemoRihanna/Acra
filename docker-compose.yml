@@ -2,13 +2,13 @@ services:
   postgres:
     image: postgres:14-alpine
     container_name: acra-postgres
+    network_mode: "host"
     environment:
       POSTGRES_DB: acra
       POSTGRES_USER: acra_admin
       POSTGRES_PASSWORD: changeme123
     volumes:
       - ./data/pgdata:/var/lib/postgresql/data
-    # Force Docker à vérifier que la DB accepte réellement les connexions
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U acra_admin -d acra"]
       interval: 5s
@@ -18,42 +18,40 @@ services:
   redis:
     image: redis:7-alpine
     container_name: acra-redis
-    ports:
-      - "6379:6379"
+    network_mode: "host"
 
   zeek:
     build:
       context: .
       dockerfile: docker/Dockerfile.zeek
     container_name: acra-zeek
-    command: ["zeek", "-i", "eth0", "-C", "local", "LogAscii::use_json=T"]
-    network_mode: "host" 
+    network_mode: "host"
+    privileged: true
     cap_add:
       - NET_ADMIN
       - NET_RAW
     volumes:
       - ./data/zeek_logs:/usr/local/zeek/logs
+    # Le script est déjà exécutable grâce au Dockerfile
+    command: ["/bin/sh", "/zeek_entrypoint.sh"]
 
   web:
     build:
       context: .
       dockerfile: docker/Dockerfile.web
     container_name: acra-web
+    network_mode: "host"
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_started
-    ports:
-      - "5000:5000"
     volumes:
       - .:/app
       - ./data/zeek_logs:/app/data/zeek_logs:ro
       - ./backups/audit_logs:/app/exports
     environment:
       - PYTHONPATH=/app
-      - DATABASE_URL=postgresql://acra_admin:changeme123@postgres:5432/acra
-      - REDIS_URL=redis://acra-redis:6379/0
+      - DATABASE_URL=postgresql://acra_admin:changeme123@localhost:5432/acra
+      - REDIS_URL=redis://localhost:6379/0
       - PYTHONUNBUFFERED=1 
       - PYTHONWARNINGS=ignore::DeprecationWarning
 
@@ -62,7 +60,7 @@ services:
       context: .
       dockerfile: docker/Dockerfile.web
     container_name: acra-streamer
-    # Utilisation de python -u pour forcer l'affichage des logs en temps réel sans buffer
+    network_mode: "host"
     command: python -u src/ingestion/zeek_stream.py
     depends_on:
       postgres:
@@ -74,7 +72,7 @@ services:
       - ./data/zeek_logs:/app/data/zeek_logs
     environment:
       - PYTHONPATH=/app
-      - DATABASE_URL=postgresql://acra_admin:changeme123@postgres:5432/acra
-      - REDIS_URL=redis://acra-redis:6379/0
+      - DATABASE_URL=postgresql://acra_admin:changeme123@localhost:5432/acra
+      - REDIS_URL=redis://localhost:6379/0
       - PYTHONUNBUFFERED=1
     restart: always
