@@ -6,6 +6,8 @@ import csv
 import io
 import datetime
 import netifaces
+import socket
+from scapy.all import ARP, Ether, srp
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, Response, jsonify
 from flask_login import login_user, logout_user, login_required, current_user
 from sqlalchemy import func
@@ -15,6 +17,8 @@ from flask_apscheduler import APScheduler
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from datetime import datetime, time, timedelta
+from flask_mail import Message
+from src.extensions import mail
 
 limiter = Limiter(key_func=get_remote_address)
 scheduler = APScheduler()
@@ -23,6 +27,17 @@ auth_bp = Blueprint('auth', __name__)
 # ==========================================================
 # 🛡️ SYSTÈME DE VISIBILITÉ TOTALE (AUDIT & TRACKING)
 # ==========================================================
+
+def get_soc_ip():
+    """Détecte dynamiquement l'IP de la machine sur eth0 ou wlan0"""
+    for iface in ['eth0', 'wlan0']:
+        try:
+            addrs = netifaces.ifaddresses(iface)
+            if netifaces.AF_INET in addrs:
+                return addrs[netifaces.AF_INET][0]['addr']
+        except ValueError:
+            continue
+    return "127.0.0.1"
 
 def log_event(action_type, details, resource_type=None, resource_id=None, success=True, error=None):
     """
@@ -153,33 +168,38 @@ def login():
         user = User.query.filter_by(email=email).first()
         from src.app import bcrypt
         
-        # 1. CAS : Identifiants corrects
         if user and user.is_active and bcrypt.check_password_hash(user.password_hash, password):
-            # VERIFICATION DU COOKIE DE CONFIANCE (Bypass MFA)
+            # 1. Vérification Cookie de confiance (Bypass MFA)
             trusted_device = request.cookies.get('trusted_device')
             if trusted_device == user.uuid:
                 login_user(user, remember=True)
-                
-                # LOG : Connexion réussie sans MFA
-                log_event("AUTH_LOGIN", f"Connexion réussie via Trusted Device pour {user.username}", "USER", user.id)
-                
+                log_event("AUTH_LOGIN", f"Connexion réussie (Trusted) pour {user.username}", "USER", user.id)
                 return redirect(url_for('auth.dashboard'))
 
-            # SINON : Procédure MFA classique
+            # 2. Préparation MFA
             session['mfa_user_id'] = user.id
-            session['mfa_code'] = str(random.randint(100000, 999999))
+            mfa_code = str(random.randint(100000, 999999))
+            session['mfa_code'] = mfa_code
             session['remember_me'] = remember 
             
-            # LOG : Initialisation MFA (on sait qu'il a le bon mot de passe)
-            log_event("AUTH_MFA_REQ", f"Code MFA généré pour {user.username}", "USER", user.id)
+            # 3. Envoi du code par email réel
+            from flask_mail import Message
+            from src.extensions import mail
+            msg = Message("🔒 Votre code de sécurité ACRA", recipients=[user.email])
+            msg.body = f"Bonjour {user.username},\n\nVotre code de vérification est : {mfa_code}\nCe code expire dans 5 minutes."
             
-            print(f"📧 [MFA] Code pour {user.email} : {session['mfa_code']}", flush=True)
+            try:
+                mail.send(msg)
+                log_event("AUTH_MFA_REQ", f"Code MFA envoyé à {user.email}", "USER", user.id)
+            except Exception as e:
+                log_event("AUTH_MFA_ERR", "Échec envoi mail MFA", success=False, error=e)
+                flash("Erreur lors de l'envoi de l'email. Vérifiez la connexion internet du SOC.", "warning")
+                # En mode test, tu peux décommenter la ligne suivante pour voir le code dans le terminal Kali si le mail échoue
+                # print(f"DEBUG MFA CODE: {mfa_code}")
+
             return redirect(url_for('auth.verify_mfa'))
         
-        # 2. CAS : Échec de connexion (Mots de passe faux ou utilisateur inexistant)
-        # Très important pour la sécurité : on logue l'IP source de l'attaquant
-        log_event("AUTH_FAILED", f"Tentative de connexion échouée pour l'email: {email}", "USER", None, success=False, error="Identifiants invalides")
-        
+        log_event("AUTH_FAILED", f"Échec de connexion : {email}", "USER", None, success=False, error="Identifiants invalides")
         flash("Identifiants invalides.", "danger")
             
     return render_template('auth/login.html')
@@ -324,27 +344,43 @@ def create_user():
     email = request.form.get('email')
     role_str = request.form.get('role')
 
+    # Génération d'un token d'invitation sécurisé
+    token = secrets.token_urlsafe(32)
+
     new_user = User(
         username=username,
         email=email,
-        password_hash=f"PENDING_ACTIVATION_{secrets.token_hex(8)}",
+        password_hash=f"PENDING_{secrets.token_hex(4)}",
         role=UserRole[role_str.upper()],
-        is_active=False
+        is_active=False,
+        invitation_token=token 
     )
-    db.session.add(new_user)
     
-    token = secrets.token_urlsafe(32)
-    activation_link = url_for('auth.activate_account', token=token, email=email, _external=True)
+    try:
+        db.session.add(new_user)
+        # On commit d'abord pour être sûr que l'utilisateur existe avant l'envoi du mail
+        db.session.commit()
+
+        # DÉTECTION D'IP ET GÉNÉRATION DU LIEN
+        soc_ip = get_soc_ip()
+        # url_for avec 'auth.activate_account' inclut automatiquement le préfixe /auth
+        relative_path = url_for('auth.activate_account', token=token, email=email)
+        activation_link = f"http://{soc_ip}:5000{relative_path}"
+        
+        # Envoi de l'invitation
+        msg = Message("🚀 Invitation à rejoindre le réseau ACRA", recipients=[email])
+        msg.body = f"Bonjour {username},\n\nTu as été invité à surveiller le réseau.\n" \
+                   f"Clique ici pour définir ton mot de passe : {activation_link}"
+        
+        mail.send(msg)
+        log_event("USER_INVITE", f"Invitation envoyée à {username} ({email}) via {soc_ip}", "USER", new_user.id)
+        flash(f"Invitation envoyée avec succès à {email}", "success")
+        
+    except Exception as e:
+        db.session.rollback()
+        log_event("USER_INVITE_FAIL", f"Erreur lors de la création/envoi à {email}", success=False, error=e)
+        flash("Erreur lors de la création de l'utilisateur ou de l'envoi du mail.", "danger")
     
-    db.session.add(AuditLog(
-        action_type="USER_INVITE",
-        action_details=f"Admin {current_user.username} a invité {username} ({role_str})",
-        user_id=current_user.id
-    ))
-    db.session.commit()
-    print(f"📧 [INVITATION] Vers: {email} | Lien: {activation_link}", flush=True)
-    
-    flash(f"Invitation envoyée à {email}.", "success")
     return redirect(url_for('auth.manage_users'))
 
 @auth_bp.route('/admin/users/update', methods=['POST'])
@@ -511,18 +547,51 @@ def forgot_password():
         user = User.query.filter_by(email=email).first()
         
         if user:
+            # 1. Préparation des données
             token = secrets.token_urlsafe(32)
-            reset_link = url_for('auth.reset_password', token=token, email=email, _external=True)
+            soc_ip = get_soc_ip()
+            reset_path = url_for('auth.reset_password', token=token, email=email)
+            reset_link = f"http://{soc_ip}:5000{reset_path}"
             
-            db.session.add(AuditLog(
-                action_type="PASSWORD_RESET_REQ",
-                action_details=f"Demande de réinitialisation pour {email}",
-                user_id=user.id
-            ))
-            db.session.commit()
-            print(f"📧 [RESET EMAIL] Vers: {email} | Lien: {reset_link}", flush=True)
-        
-        flash("Si cet email existe, un lien de réinitialisation a été envoyé.", "info")
+            # 2. Log de l'intention 
+            # CORRECTIF : On passe l'ID de l'utilisateur dans 'resource_id' 
+            # car 'user_id' n'est pas un argument de ta fonction log_event
+            log_event(
+                action_type="PASSWORD_RESET_ATTEMPT", 
+                details=f"Tentative de reset pour {email}", 
+                resource_type="USER",
+                resource_id=user.id
+            )
+            
+            # 3. Préparation du message
+            msg = Message(
+                "🔐 Réinitialisation de votre mot de passe ACRA",
+                recipients=[email]
+            )
+            msg.body = f"""Bonjour {user.username},
+
+Une demande de réinitialisation de mot de passe a été effectuée pour votre compte sur le SOC ACRA.
+
+Cliquez sur le lien ci-dessous pour choisir un nouveau mot de passe :
+{reset_link}
+
+Si vous n'êtes pas à l'origine de cette demande, ignorez cet e-mail.
+"""
+            try:
+                # 4. Envoi SMTP
+                mail.send(msg)
+                flash("Un lien de réinitialisation a été envoyé à votre adresse email.", "success")
+                
+            except Exception as e:
+                error_str = str(e).lower()
+                if "broken pipe" in error_str or "reset by peer" in error_str:
+                    flash("Un lien de réinitialisation a été envoyé à votre adresse email.", "success")
+                else:
+                    log_event("MAIL_ERROR", "Échec critique envoi mail de reset", success=False, error=e)
+                    flash("Erreur lors de l'envoi du mail. Contactez l'administrateur.", "danger")
+        else:
+            flash("Si cet email existe, un lien de réinitialisation a été envoyé.", "info")
+            
         return redirect(url_for('auth.login'))
 
     return render_template('auth/reset.html', step="request")
@@ -546,17 +615,33 @@ def reset_password(token):
             return render_template('auth/reset.html', step="reset", token=token, email=email)
 
         from src.app import bcrypt
-        user.password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
         
-        db.session.add(AuditLog(
-            action_type="PASSWORD_RESET_SUCCESS",
-            action_details=f"Réinitialisation réussie via token pour {email}",
-            user_id=user.id
-        ))
-        db.session.commit()
-        
-        flash("Votre mot de passe a été réinitialisé. Connectez-vous.", "success")
-        return redirect(url_for('auth.login'))
+        try:
+            # 1. Mise à jour du mot de passe
+            user.password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
+            
+            # 2. Création manuelle du log (sans passer par log_event pour éviter le double commit)
+            new_log = AuditLog(
+                action_type="PASSWORD_RESET_SUCCESS",
+                action_details=f"Réinitialisation réussie pour {email}",
+                user_id=user.id,
+                user_ip=request.remote_addr,
+                user_agent=request.user_agent.string,
+                success=True
+            )
+            db.session.add(new_log)
+
+            # 3. UN SEUL COMMIT POUR TOUT (Atomicité)
+            db.session.commit()
+            
+            flash("Votre mot de passe a été mis à jour avec succès.", "success")
+            return redirect(url_for('auth.login'))
+            
+        except Exception as e:
+            db.session.rollback()
+            # On affiche l'erreur réelle dans le terminal pour débugger
+            print(f"❌ ERREUR RESET PASSWORD: {e}")
+            flash("Problème technique lors de la mise à jour. Réessayez.", "danger")
 
     return render_template('auth/reset.html', step="reset", token=token, email=email)
 
@@ -657,78 +742,111 @@ def init_scheduler(app):
 
 # --- API DE VISIBILITÉ RÉSEAU ---
 
+# --- 1. LE SCANNER ACTIF (À AJOUTER) ---
+def scan_network_assets():
+    """Découverte active via Scapy - Utilise 'hostname' comme défini dans ton models.py"""
+    with scheduler.app.app_context():
+        try:
+            soc_ip = get_soc_ip()
+            network_prefix = ".".join(soc_ip.split('.')[:-1]) + ".0/24"
+            
+            # Scan ARP
+            ans, _ = srp(Ether(dst="ff:ff:ff:ff:ff:ff")/ARP(pdst=network_prefix), timeout=2, verbose=0)
+
+            for sent, received in ans:
+                ip = received.psrc
+                mac = received.hwsrc
+                
+                try:
+                    name = socket.gethostbyaddr(ip)[0].lower()
+                except:
+                    name = ""
+
+                # Classification pour les icônes
+                device_type = "computer"
+                if any(x in name for x in ['iphone', 'android', 'phone']): device_type = "smartphone"
+                elif any(x in name for x in ['print', 'hp', 'canon', 'epson']): device_type = "printer"
+                elif any(x in name for x in ['server', 'nas', 'vm', 'proxmox']): device_type = "server"
+                elif any(x in name for x in ['aws', 'cloud', 'azure']): device_type = "cloud"
+                elif ip.endswith('.1'): device_type = "router"
+
+                asset = NetworkAsset.query.filter_by(ip_address=ip).first()
+                if not asset:
+                    # On utilise 'hostname' car c'est le nom dans ton models.py
+                    asset = NetworkAsset(
+                        ip_address=ip,
+                        mac_address=mac,
+                        hostname=name.upper() if name else f"HÔTE-{ip.split('.')[-1]}",
+                        device_type=device_type,
+                        status="online"
+                    )
+                    db.session.add(asset)
+                else:
+                    asset.last_seen = datetime.utcnow()
+                    asset.status = "online"
+                    if name: asset.hostname = name.upper()
+                    asset.device_type = device_type
+
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            print(f"❌ Erreur Scan Scapy: {e}")
+
+
+# --- 2. L'API DE TOPOLOGIE (À REMPLACER) ---
 @auth_bp.route('/api/v1/network/topology')
 @login_required
 def get_topology_data():
     try:
-        # --- 1. DETECTION AUTO DE LA PASSERELLE ---
-        # On interroge la table de routage du système d'exploitation
-        gws = netifaces.gateways()
-        # On récupère l'IP de la passerelle par défaut (IPv4)
-        default_gw_ip = gws['default'][netifaces.AF_INET][0] 
-
-        # --- 2. CONFIGURATION DU SEUIL ---
-        threshold = datetime.utcnow() - timedelta(seconds=30)
+        soc_ip = get_soc_ip()
         assets = NetworkAsset.query.all()
         
         nodes = []
         edges = []
 
-        # On cherche si la passerelle est déjà un asset connu en base de données
-        gw_asset = NetworkAsset.query.filter_by(ip_address=default_gw_ip).first()
-        
-        # ID pivot pour les connexions (soit l'ID BDD, soit un ID virtuel "auto_gw")
-        master_gw_id = str(gw_asset.id) if gw_asset else "auto_gw"
-
-        # Si la passerelle n'est PAS en base, on crée un noeud virtuel pour le centre de la carte
-        if not gw_asset:
-            nodes.append({
-                "data": {
-                    "id": "auto_gw",
-                    "label": f"PASSERELLE ({default_gw_ip})",
-                    "device_type": "router",
-                    "status": "online",
-                    "ip": default_gw_ip
-                }
-            })
+        # Nœud central (SOC)
+        nodes.append({
+            "data": {
+                "id": "soc_core",
+                "label": f"🛡️ SOC ACRA\n{soc_ip}",
+                "device_type": "server",
+                "status": "online",
+                "ip": soc_ip
+            }
+        })
 
         for asset in assets:
-            asset_info = asset.to_dict()
-            is_active = asset.last_seen > threshold
-            current_status = "online" if is_active else "offline"
-            
-            # Si l'IP de l'asset actuel correspond à l'IP de la passerelle détectée
-            is_this_the_gw = (asset.ip_address == default_gw_ip)
+            if asset.ip_address == soc_ip: continue
 
+            # On utilise ta méthode to_dict() existante
+            asset_info = asset.to_dict()
+            
             nodes.append({
                 "data": {
                     "id": str(asset.id),
-                    "label": "🌐 PASSERELLE" if is_this_the_gw else asset_info['label'],
+                    "label": asset_info['label'], # to_dict() transforme hostname en label, donc c'est bon
                     "ip": asset_info['ip'],
-                    "device_type": "router" if is_this_the_gw else asset_info['device_type'],
-                    "status": current_status,
+                    "device_type": asset_info['device_type'],
+                    "status": asset_info['status'],
                     "usage": f"{asset_info.get('usage_mb', 0)} Mo",
-                    "os": asset_info.get('os') or "Inconnu",
                     "last_seen": asset_info['last_seen_human']
                 }
             })
 
-            # --- 3. CREATION DES LIENS ---
-            # Tout appareil actif se connecte à l'ID de la passerelle (sauf elle-même)
-            if is_active and not is_this_the_gw:
+            # Connexion si online
+            if asset_info['status'] == "online":
                 edges.append({
                     "data": {
                         "id": f"e{asset.id}",
                         "source": str(asset.id),
-                        "target": master_gw_id
+                        "target": "soc_core"
                     }
                 })
 
         return jsonify({"status": "success", "nodes": nodes, "edges": edges})
-
     except Exception as e:
-        print(f"❌ Erreur Topologie Auto: {str(e)}")
-        return jsonify({"status": "error", "message": "Impossible de détecter la topologie"}), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 # --- ROUTE POUR LA TOPOLOGIE ---
 @auth_bp.route('/topology')
 @login_required

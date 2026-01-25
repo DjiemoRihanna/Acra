@@ -1,11 +1,8 @@
-from flask_sqlalchemy import SQLAlchemy
+from src.extensions import db
 from flask_login import UserMixin
 from datetime import datetime
 import enum
 import uuid
-
-# Initialisation de la base de données
-db = SQLAlchemy()
 
 # --- ENUMS POUR LE RBAC (Exigence Daryl) ---
 class UserRole(enum.Enum):
@@ -35,6 +32,8 @@ class User(db.Model, UserMixin):
     # Réinitialisation de mot de passe (UC05)
     reset_token = db.Column(db.String(100), unique=True, nullable=True)
     reset_token_expiry = db.Column(db.DateTime, nullable=True)
+    # --- AJOUT POUR L'INVITATION DES AMIS ---
+    invitation_token = db.Column(db.String(100), unique=True, nullable=True)
 
     # Relation vers les logs
     logs = db.relationship('AuditLog', back_populates='user')

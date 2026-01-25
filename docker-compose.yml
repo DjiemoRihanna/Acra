@@ -36,43 +36,56 @@ services:
     command: ["/bin/sh", "/zeek_entrypoint.sh"]
 
   web:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.web
-    container_name: acra-web
-    network_mode: "host"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    volumes:
-      - .:/app
-      - ./data/zeek_logs:/app/data/zeek_logs:ro
-      - ./backups/audit_logs:/app/exports
-    environment:
-      - PYTHONPATH=/app
-      - DATABASE_URL=postgresql://acra_admin:changeme123@localhost:5432/acra
-      - REDIS_URL=redis://localhost:6379/0
-      - PYTHONUNBUFFERED=1 
-      - PYTHONWARNINGS=ignore::DeprecationWarning
+      build:
+        context: .
+        dockerfile: docker/Dockerfile.web
+      container_name: acra-web
+      network_mode: "host"
+      depends_on:
+        postgres:
+          condition: service_healthy
+      volumes:
+        - .:/app
+        - ./data/zeek_logs:/app/data/zeek_logs:ro
+        - ./backups/audit_logs:/app/exports
+      environment:
+            - PYTHONPATH=/app
+            - DATABASE_URL=postgresql://acra_admin:changeme123@localhost:5432/acra
+            - REDIS_URL=redis://localhost:6379/0
+            # --- CONFIGURATION GMAIL RÉELLE ---
+            - MAIL_SERVER=smtp.gmail.com
+            - MAIL_PORT=587
+            - MAIL_USERNAME=    
+            - MAIL_PASSWORD=       
+            - MAIL_USE_TLS=True
+            - MAIL_DEFAULT_SENDER=wandjidaryl@gmail.com
+            # ----------------------------------
+            - PYTHONUNBUFFERED=1 
+            - PYTHONWARNINGS=ignore::DeprecationWarning
 
   zeek-streamer:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.web
-    container_name: acra-streamer
-    network_mode: "host"
-    command: python -u src/ingestion/zeek_stream.py
-    depends_on:
-      postgres:
-        condition: service_healthy
-      zeek:
-        condition: service_started
-    volumes:
-      - .:/app
-      - ./data/zeek_logs:/app/data/zeek_logs
-    environment:
-      - PYTHONPATH=/app
-      - DATABASE_URL=postgresql://acra_admin:changeme123@localhost:5432/acra
-      - REDIS_URL=redis://localhost:6379/0
-      - PYTHONUNBUFFERED=1
-    restart: always
+      build:
+        context: .
+        dockerfile: docker/Dockerfile.web
+      container_name: acra-streamer
+      network_mode: "host"
+      # L'astuce est ici : on crée les fichiers et on donne les droits avant de lancer le script
+      command: >
+        /bin/sh -c "
+        mkdir -p /app/data/zeek_logs && 
+        touch /app/data/zeek_logs/conn.log /app/data/zeek_logs/dns.log /app/data/zeek_logs/ssl.log && 
+        chmod -R 777 /app/data/zeek_logs &&
+        python -u src/ingestion/zeek_stream.py"
+      depends_on:
+        postgres:
+          condition: service_healthy
+        zeek:
+          condition: service_started
+      volumes:
+        - .:/app
+        - ./data/zeek_logs:/app/data/zeek_logs
+      environment:
+        - PYTHONPATH=/app
+        - DATABASE_URL=postgresql://acra_admin:changeme123@localhost:5432/acra
+        - PYTHONUNBUFFERED=1
+      restart: always

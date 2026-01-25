@@ -150,24 +150,27 @@ def update_assets_observation(cur, data, log_type):
 def start_tailing(file_path, log_type):
     print(f"🚀 [INGESTION] Streaming de {log_type} démarré...", flush=True)
     
-    while True: # Boucle de survie du service
+    while True:
         try:
             conn = get_db_connection()
             wait_for_tables(conn)
             
             if not os.path.exists(file_path):
-                print(f"⌛ Attente du fichier {file_path}...", flush=True)
-                time.sleep(5)
+                time.sleep(2)
                 continue
 
             with open(file_path, "r") as f:
-                f.seek(0, os.SEEK_END)
+                # IMPORTANT : Si le fichier est petit, on lit tout (pour ne rien rater au démarrage)
+                # Si le fichier est déjà gros, on va à la fin (pour ne pas tout re-traiter)
+                if os.path.getsize(file_path) > 1024:
+                    f.seek(0, os.SEEK_END)
+                else:
+                    f.seek(0)
+
                 while True:
                     line = f.readline()
                     if not line:
-                        # Vérifier si le fichier a été tourné/supprimé par Zeek
-                        if not os.path.exists(file_path):
-                            break 
+                        if not os.path.exists(file_path): break 
                         time.sleep(0.5)
                         continue
 
@@ -184,17 +187,11 @@ def start_tailing(file_path, log_type):
 
                             update_assets_observation(cur, data, log_type)
                             conn.commit()
-                    except json.JSONDecodeError:
-                        continue
                     except Exception as e:
-                        conn.rollback() # Annuler la transaction en cas d'erreur
-                        print(f"⚠️ [SQL ERROR {log_type}] : {e}", flush=True)
-                        
-        except (psycopg2.OperationalError, psycopg2.InterfaceError):
-            print(f"🔄 Perte de connexion DB pour {log_type}, reconnexion...", flush=True)
-            time.sleep(2)
+                        conn.rollback()
+                        continue
         except Exception as e:
-            print(f"🚨 Erreur inattendue dans {log_type} : {e}", flush=True)
+            print(f"🔄 Erreur {log_type}, reconnexion...", flush=True)
             time.sleep(5)
 
 def stream_zeek_logs():

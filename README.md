@@ -151,6 +151,8 @@ acra/                                  # RACINE DU PROJET
 │   │   │
 │   │   ├── 📁 auth/                # AUTHENTIFICATION (UC01-UC13)
 │   │   │   ├── 📄 login.html       # UC04 - Connexion
+│   │   │   ├── 📄 activate.html    # activation de compte
+│   │   │   ├── 📄 mfa.html         # verification mfa
 │   │   │   ├── 📄 setup.html       # UC01 - Setup initial
 │   │   │   └── 📄 reset.html       # UC05 - Réinitialisation MDP
 │   │   │
