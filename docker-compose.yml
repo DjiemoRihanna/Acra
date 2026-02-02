@@ -55,10 +55,10 @@ services:
             # --- CONFIGURATION GMAIL RÉELLE ---
             - MAIL_SERVER=smtp.gmail.com
             - MAIL_PORT=587
-            - MAIL_USERNAME=    
-            - MAIL_PASSWORD=       
+            - MAIL_USERNAME=acranoreply@gmail.com    
+            - MAIL_PASSWORD=      
             - MAIL_USE_TLS=True
-            - MAIL_DEFAULT_SENDER=wandjidaryl@gmail.com
+            - MAIL_DEFAULT_SENDER=acranoreply@gmail.com
             # ----------------------------------
             - PYTHONUNBUFFERED=1 
             - PYTHONWARNINGS=ignore::DeprecationWarning

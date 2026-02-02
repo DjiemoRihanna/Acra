@@ -4,17 +4,16 @@ from datetime import datetime
 import enum
 import uuid
 
-# --- ENUMS POUR LE RBAC (Exigence Daryl) ---
+# --- ENUMS POUR LE RBAC ---
 class UserRole(enum.Enum):
     ADMIN = "admin"
     ANALYST_SENIOR = "analyst_senior"
     ANALYST_JUNIOR = "analyst_junior"
 
-# --- MODÈLE UTILISATEUR (UC04, UC11-UC13) ---
+# --- MODÈLE UTILISATEUR ---
 class User(db.Model, UserMixin):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
-    # UUID utilisé pour le cookie "Trusted Device" (Bypass MFA)
     uuid = db.Column(db.String(36), unique=True, default=lambda: str(uuid.uuid4()))
     email = db.Column(db.String(255), unique=True, nullable=False)
     username = db.Column(db.String(100), unique=True, nullable=False)
@@ -22,30 +21,24 @@ class User(db.Model, UserMixin):
     role = db.Column(db.Enum(UserRole), nullable=False, default=UserRole.ANALYST_JUNIOR)
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    # Paramètres de Profil & Sécurité (UC11, UC12, UC13)
     theme = db.Column(db.String(10), default='dark')
     language = db.Column(db.String(5), default='fr')
     notif_level = db.Column(db.String(5), default='P2')
     two_factor_enabled = db.Column(db.Boolean, default=False)
-    
-    # Réinitialisation de mot de passe (UC05)
     reset_token = db.Column(db.String(100), unique=True, nullable=True)
     reset_token_expiry = db.Column(db.DateTime, nullable=True)
-    # --- AJOUT POUR L'INVITATION DES AMIS ---
     invitation_token = db.Column(db.String(100), unique=True, nullable=True)
 
-    # Relation vers les logs
     logs = db.relationship('AuditLog', back_populates='user')
 
     def __repr__(self):
         return f'<User {self.username}>'
 
-# --- GESTION DES FLUX RÉSEAU (ZEEK INGESTION) ---
+# --- GESTION DES FLUX RÉSEAU (Capturé par Scapy/Zeek) ---
 class NetworkFlow(db.Model):
     __tablename__ = 'network_flows'
     id = db.Column(db.BigInteger, primary_key=True)
-    ts = db.Column(db.DateTime, index=True) 
+    ts = db.Column(db.DateTime, index=True, default=datetime.utcnow) 
     uid = db.Column(db.String(100), unique=True)
     source_ip = db.Column(db.String(100), index=True)
     source_port = db.Column(db.Integer)
@@ -53,10 +46,13 @@ class NetworkFlow(db.Model):
     dest_port = db.Column(db.Integer)
     protocol = db.Column(db.String(100))
     service = db.Column(db.String(100))
-    orig_bytes = db.Column(db.BigInteger, default=0)
-    resp_bytes = db.Column(db.BigInteger, default=0)
+    orig_bytes = db.Column(db.BigInteger, default=0) # Octets envoyés
+    resp_bytes = db.Column(db.BigInteger, default=0) # Octets reçus
+    duration = db.Column(db.Float, default=0.0)
+    
+    # Champ CRITIQUE pour "la totale" : stocke le domaine DNS capturé
+    dns_query = db.Column(db.String(255), nullable=True) 
 
-# --- INVENTAIRE DES ASSETS RÉSEAU & TOPOLOGIE (Fusionné pour Itération 1) ---
 # --- INVENTAIRE DES ASSETS RÉSEAU & TOPOLOGIE ---
 class NetworkAsset(db.Model):
     __tablename__ = 'network_assets'
@@ -66,66 +62,74 @@ class NetworkAsset(db.Model):
     mac_address = db.Column(db.String(17))
     hostname = db.Column(db.String(100), default="Inconnu")
     os_info = db.Column(db.String(100), default="Détection en cours...")
-    
-    # Type d'appareil pour les icônes (router, server, smartphone, computer)
     device_type = db.Column(db.String(50), default='computer') 
-    
-    # Statut par défaut
     status = db.Column(db.String(20), default='online') 
-    
-    # Distinction LAN vs Internet
     asset_type = db.Column(db.String(50), default='internal') 
     
-    # Statistiques (initialisées à 0 pour éviter les NoneType)
+    # Statistiques cumulées réelles
     total_bytes_sent = db.Column(db.BigInteger, default=0)
     total_bytes_received = db.Column(db.BigInteger, default=0)
     
-    # Liste des sites visités (UC "savoir ce qui a été fait")
+    # Liste des sites visités (JSON pour stocker l'historique récent)
     top_domains = db.Column(db.JSON, default=list) 
     
-    # Mise à jour automatique de l'heure à chaque modification
     last_seen = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    avg_traffic_mb = db.Column(db.Float, default=0.0) 
+    avg_conn_count = db.Column(db.Float, default=0.0)
+    is_critical_asset = db.Column(db.Boolean, default=False)
 
     def to_dict(self):
-        """
-        Convertit l'objet en dictionnaire pour l'API de topologie.
-        Inclut la sécurité contre les erreurs NoneType lors du calcul du trafic.
-        """
-        # 1. Sécurisation des calculs (évite l'erreur unsupported operand type +)
+        """Convertit l'asset en données pour Cytoscape avec calcul réel du statut."""
         sent = self.total_bytes_sent or 0
         received = self.total_bytes_received or 0
         usage_total_mb = round((sent + received) / (1024 * 1024), 2)
         
-        # 2. Logique de détermination du statut "vivant" (online/offline)
-        # Si l'appareil n'a pas été vu depuis plus de 60 secondes, il est offline
-        from datetime import datetime as dt
+        # Calcul dynamique : si pas vu depuis 2 mins = offline (rouge)
         if self.last_seen:
-            diff = (dt.utcnow() - self.last_seen).total_seconds()
-            is_alive = "online" if diff < 60 else "offline"
+            diff = (datetime.utcnow() - self.last_seen).total_seconds()
+            is_alive = "online" if diff < 120 else "offline"
         else:
             is_alive = "offline"
 
-        # 3. Retourne le dictionnaire formaté pour le JSON de l'API
         return {
             "id": self.id,
             "ip": self.ip_address,
             "mac": self.mac_address,
             "label": self.hostname if (self.hostname and self.hostname != "Inconnu") else self.ip_address,
-            "type": self.asset_type,
             "device_type": self.device_type,
             "os": self.os_info,
             "status": is_alive, 
             "usage_mb": usage_total_mb,
-            "last_seen_human": self.last_seen.strftime('%H:%M:%S') if self.last_seen else "Inconnu",
-            "sites": self.top_domains[:5] if self.top_domains else []
+            "last_seen_human": self.last_seen.strftime('%H:%M:%S') if self.last_seen else "Jamais",
+            # On renvoie les 5 derniers sites visités
+            "sites": self.top_domains[-5:] if self.top_domains else ["Aucun site détecté"]
         }
+
+# --- SYSTÈME D'ALERTES & SCORING ---
+class Alert(db.Model):
+    __tablename__ = 'alerts'
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(db.String(36), unique=True, default=lambda: str(uuid.uuid4()))
+    ti_score = db.Column(db.Integer, default=0)
+    ml_score = db.Column(db.Integer, default=0)
+    ueba_score = db.Column(db.Integer, default=0)
+    context_score = db.Column(db.Integer, default=0)
+    risk_score = db.Column(db.Integer, nullable=False)
+    severity = db.Column(db.String(10), nullable=False) 
+    category = db.Column(db.String(50), nullable=False) 
+    source_ip = db.Column(db.String(45), nullable=False)
+    destination_ip = db.Column(db.String(45), nullable=False)
+    status = db.Column(db.String(20), default='new')
+    detection_source = db.Column(db.String(50), default='ACRA-Brain')
+    analyst_feedback = db.Column(db.Boolean, nullable=True) 
+    detected_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 # --- THREAT INTELLIGENCE (IOCs) ---
 class ThreatIntelligence(db.Model):
     __tablename__ = 'threat_intelligence'
     id = db.Column(db.Integer, primary_key=True)
-    indicator = db.Column(db.String(255), index=True) # IP, Domain, Hash
-    type = db.Column(db.String(50)) # Ex: Botnet CnC
+    indicator = db.Column(db.String(255), index=True) 
+    type = db.Column(db.String(50)) 
     severity = db.Column(db.String(20))
     source = db.Column(db.String(100))
     added_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -139,7 +143,7 @@ class DetectionRule(db.Model):
     logic = db.Column(db.JSON)
     is_enabled = db.Column(db.Boolean, default=True)
 
-# --- JOURNAL D'AUDIT COMPLET ---
+# --- JOURNAL D'AUDIT ---
 class AuditLog(db.Model):
     __tablename__ = 'audit_logs'
     id = db.Column(db.Integer, primary_key=True)
@@ -151,10 +155,8 @@ class AuditLog(db.Model):
     user_agent = db.Column(db.Text)
     success = db.Column(db.Boolean, default=True)
     error_message = db.Column(db.Text)
-    
     user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
     performed_at = db.Column(db.DateTime, default=datetime.utcnow)
-
     user = db.relationship('User', back_populates='logs')
 
     def __repr__(self):

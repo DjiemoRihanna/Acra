@@ -88,6 +88,7 @@ acra/                                  # RACINE DU PROJET
 │   │   ├── 📄 event_bus.py         # Bus d'événements Redis (pub/sub)
 │   │   ├── 📄 pipeline.py          # Pipeline de traitement temps réel
 │   │   ├── 📄 priority_queue.py    # File prioritaire (TI ≥ 80 priorité absolue)
+│   │   ├── 📄 tasks.py             # 
 │   │   └── 📄 circuit_breaker.py   # Coupe-circuit (règle 5.1)
 │   │
 │   ├── 📁 ingestion/                # INGESTION DES DONNÉES
@@ -137,12 +138,10 @@ acra/                                  # RACINE DU PROJET
 │   │
 │   ├── 📁 api/                      # API REST
 │   │   ├── 📄 __init__.py
-│   │   └── 📁 v1/                  # Version 1 de l'API
-│   │       ├── 📄 __init__.py
-│   │       ├── 📄 alerts.py        # Endpoints alertes
-│   │       ├── 📄 network.py       # Endpoints réseau
-│   │       ├── 📄 response.py      # Endpoints réponse
-│   │       └── 📄 system.py        # Endpoints système
+│   │   ├── 📄 alerts.py        # Endpoints alertes
+│   │   ├── 📄 network.py       # Endpoints réseau
+│   │   ├── 📄 response.py      # Endpoints réponse
+│   │   └── 📄 system.py        # Endpoints système
 │   │
 │   ├── 📁 templates/                # TEMPLATES HTML (JINJA2)
 │   │   ├── 📁 layouts/             # Layouts de base

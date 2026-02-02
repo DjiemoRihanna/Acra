@@ -4,10 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ACRA - SOC Platform</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛡️</text></svg>">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    
     <style>
-        /* --- STRUCTURE DE BASE --- */
+        /* --- STRUCTURE DE BASE FIXE --- */
         body { 
             display: flex; 
             min-height: 100vh; 
@@ -32,6 +35,17 @@
             border-right: 1px solid var(--border-color);
         }
 
+        .main-content { 
+            flex: 1; 
+            margin-left: 260px; 
+            width: calc(100% - 260px);
+            background: var(--bg-body); 
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
         .nav-item { 
             padding: 12px 20px; 
             color: var(--sidebar-text); 
@@ -48,9 +62,7 @@
         .nav-item.active { background: rgba(0, 188, 212, 0.15); color: var(--acra-cyan); border-left-color: var(--acra-cyan); opacity: 1; }
         .nav-item i { width: 20px; text-align: center; }
         
-        /* --- 🛡️ LE GLOBAL PATCH (UC13) --- */
-        
-        /* Correction de la Sidebar en mode clair car elle est sombre par défaut dans ton CSS */
+        /* --- PATCH MODE CLAIR (UC13) --- */
         body.light-mode .sidebar {
             background: #ffffff !important;
             border-right: 1px solid var(--border-color) !important;
@@ -64,42 +76,21 @@
         body.light-mode .sidebar .nav-item:hover {
             background: #f8fafc !important;
         }
-
-        /* Forcer le fond de page et le texte en mode clair */
-        body.light-mode .main-content { 
-            background: var(--bg-body) !important; 
-        }
-        
-        /* Nettoyage du Header et de la zone utilisateur */
         body.light-mode header, 
         body.light-mode .user-info {
             background: #ffffff !important;
             border-color: var(--border-color) !important;
             color: var(--text-main) !important;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
         }
-
-        /* Correction des sélecteurs de ton main.css qui pourraient rester sombres */
-        body.light-mode .card, 
-        body.light-mode .settings-card, 
-        body.light-mode .table-card {
+        body.light-mode .card {
             background: #ffffff !important;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
             border: 1px solid var(--border-color) !important;
-        }
-
-        /* Patch pour les textes qui pourraient hériter du blanc du mode sombre */
-        body.light-mode .user-info span,
-        body.light-mode th,
-        body.light-mode td {
-            color: var(--text-main) !important;
         }
 
         /* --- RESPONSIVE --- */
         @media (max-width: 768px) {
             .sidebar { width: 70px; }
             .sidebar span { display: none; }
-            .sidebar-header { padding: 20px 10px !important; text-align: center; }
             .main-content { margin-left: 70px !important; width: calc(100% - 70px) !important; }
         }
     </style>
@@ -116,9 +107,16 @@
                 <i class="fas fa-th-large"></i> <span>Dashboard SOC</span>
             </a>
 
-            <a href="{{ url_for('auth.network_map') }}" class="nav-item {{ 'active' if request.endpoint == 'auth.network_map' }}"><i class="fas fa-project-diagram"></i> <span>Topologie Réseau</span></a>
+            <a href="{{ url_for('network.topology_view') }}" class="nav-item {{ 'active' if request.endpoint == 'network.topology_view' }}">
+                <i class="fas fa-project-diagram"></i> <span>Topologie Réseau</span>
+            </a>
+            
             <a href="#" class="nav-item"><i class="fas fa-exclamation-triangle"></i> <span>Centre d'Alertes</span></a>
-            <a href="{{ url_for('auth.view_audit_logs') }}" class="nav-item"><i class="fas fa-terminal"></i> <span>Log Explorer</span></a>
+            
+            <a href="{{ url_for('system.view_audit_logs') }}" class="nav-item {{ 'active' if request.endpoint == 'system.view_audit_logs' }}">
+                <i class="fas fa-terminal"></i> <span>Log Explorer</span>
+            </a>
+            
             <a href="#" class="nav-item"><i class="fas fa-hand-fist"></i> <span>Console de Riposte</span></a>
             <a href="#" class="nav-item"><i class="fas fa-heartbeat"></i> <span>Gestion Continuité</span></a>
 
@@ -138,7 +136,7 @@
         </nav>
     </div>
 
-    <div class="main-content" style="flex: 1; margin-left: 260px; background: var(--bg-body); color: var(--text-main);">
+    <div class="main-content">
         
         <header style="background: var(--header-bg); padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color);">
             <div style="font-weight: bold; font-size: 18px; color: var(--acra-cyan); text-transform: uppercase; letter-spacing: 1px;">
@@ -171,11 +169,13 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
-        // Patch Chart.js dynamique
+        // Gestion dynamique du thème pour Chart.js
         function updateChartsTheme() {
             const isLight = document.body.classList.contains('light-mode');
-            Chart.defaults.color = isLight ? '#1e293b' : '#adb5bd';
-            Chart.defaults.borderColor = isLight ? '#e2e8f0' : '#1a2a3a';
+            if (window.Chart) {
+                Chart.defaults.color = isLight ? '#1e293b' : '#adb5bd';
+                Chart.defaults.borderColor = isLight ? '#e2e8f0' : '#1a2a3a';
+            }
         }
         updateChartsTheme();
     </script>

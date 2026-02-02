@@ -1,12 +1,40 @@
 {% extends "layouts/base.html" %}
 
 {% block content %}
+<style>
+    /* Fix Layout Forced: Dimensions fixes et affichage immédiat */
+    #cy { 
+        width: 100%; 
+        height: 750px; 
+        background-color: #0b0c0e; 
+        border-radius: 8px; 
+        display: block;
+        position: relative;
+    }
+    .bg-darker { background-color: #08090a; }
+    .list-group-item { border-bottom: 1px dashed #333 !important; font-size: 0.85rem; padding: 10px 0; }
+    .pulse-tiny {
+        animation: pulse-blue 2s infinite;
+        font-size: 0.65rem;
+        padding: 5px 10px;
+        border-radius: 4px;
+    }
+    @keyframes pulse-blue {
+        0% { box-shadow: 0 0 0 0 rgba(0, 188, 212, 0.4); }
+        70% { box-shadow: 0 0 0 6px rgba(0, 188, 212, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(0, 188, 212, 0); }
+    }
+    #details-panel::-webkit-scrollbar { width: 5px; }
+    #details-panel::-webkit-scrollbar-track { background: #0b0c0e; }
+    #details-panel::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
+</style>
+
 <div class="container-fluid">
     <div class="row">
         <div class="col-md-9">
-            <div class="card bg-dark text-white border-secondary">
+            <div class="card bg-dark text-white border-secondary shadow">
                 <div class="card-header border-secondary d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="fas fa-project-diagram me-2"></i>Cartographie Réseau Temps Réel</h5>
+                    <h5 class="mb-0"><i class="fas fa-project-diagram me-2 text-info"></i>Cartographie Réseau Temps Réel</h5>
                     <div class="d-flex align-items-center">
                         <div id="status-indicator" class="small text-success me-3">
                             <i class="fas fa-sync fa-spin me-1"></i> Live
@@ -16,8 +44,8 @@
                         </button>
                     </div>
                 </div>
-                <div class="card-body p-0" style="height: 750px; position: relative;">
-                    <div id="cy" style="width: 100%; height: 100%; background-color: #0b0c0e;"></div>
+                <div class="card-body p-0" style="height: 750px;">
+                    <div id="cy"></div>
                 </div>
             </div>
         </div>
@@ -27,14 +55,14 @@
                 <div class="card-header border-secondary bg-secondary text-white">
                     <h5 class="mb-0"><i class="fas fa-microscope me-2"></i>Détails Asset</h5>
                 </div>
-                <div id="details-panel" class="card-body">
+                <div id="details-panel" class="card-body overflow-auto">
                     <div class="text-center mt-5">
                         <i class="fas fa-mouse-pointer fa-3x mb-3 text-secondary"></i>
-                        <p class="text-muted small">Sélectionnez un appareil pour analyser ses propriétés en direct.</p>
+                        <p class="text-muted small">Sélectionnez un appareil pour analyser son trafic et ses activités DNS.</p>
                     </div>
                 </div>
-                <div class="card-footer border-secondary bg-darker small">
-                    <i class="fas fa-info-circle text-info me-1"></i> Mise à jour auto : 5s
+                <div class="card-footer border-secondary bg-darker small text-center">
+                    <span class="text-muted"><i class="fas fa-info-circle text-info me-1"></i> Rafraîchissement : Auto (15s)</span>
                 </div>
             </div>
         </div>
@@ -45,41 +73,73 @@
 
 <script>
 let cy = null;
-let updateInterval = null;
-const REFRESH_RATE = 5000;
+const REFRESH_RATE = 30000;
+let isFetching = false;
 
-function loadData(isInitial = false) {
-    fetch('/auth/api/v1/network/topology') 
-        .then(res => res.json())
-        .then(response => {
+// URLs d'icônes stables
+const ICON_MAP = {
+    'router': 'https://img.icons8.com/color/96/router.png',
+    'server': 'https://img.icons8.com/color/96/server.png',
+    'computer': 'https://img.icons8.com/color/96/monitor--v1.png',
+    'smartphone': 'https://img.icons8.com/color/96/iphone.png',
+    'iot': 'https://img.icons8.com/color/96/processor.png',
+    'external': 'https://img.icons8.com/color/96/earth-element.png'
+};
+
+async function loadData(isInitial = false) {
+    if (isFetching) return; 
+    isFetching = true;
+
+    try {
+        const res = await fetch("{{ url_for('network.get_topology_data') }}");
+        
+        // Gestion spécifique de l'erreur 429
+        if (res.status === 429) {
+            console.warn("Serveur saturé (429), pause du rafraîchissement...");
+            updateStatus(false);
+            setTimeout(() => { isFetching = false; loadData(); }, 30000); 
+            return;
+        }
+
+        if (!res.ok) throw new Error("HTTP error " + res.status);
+        const response = await res.json();
+
+        if (response.status === "success") {
             if (isInitial || !cy) {
                 initGraph(response.nodes, response.edges);
             } else {
                 updateGraph(response.nodes, response.edges);
             }
             updateStatus(true);
-        })
-        .catch(err => {
-            console.error("Erreur Topologie:", err);
-            updateStatus(false);
-        });
+        }
+    } catch (err) {
+        console.error("Erreur Topologie:", err);
+        updateStatus(false);
+    } finally {
+        isFetching = false;
+        // Programmation de la prochaine mise à jour SEULEMENT quand la précédente est terminée
+        if (!isInitial) {
+            setTimeout(() => loadData(false), REFRESH_RATE);
+        }
+    }
 }
 
 function updateStatus(isOnline) {
     const status = document.getElementById('status-indicator');
-    if (isOnline) {
-        status.innerHTML = '<i class="fas fa-sync fa-spin me-1"></i> Live';
-        status.className = 'small text-success me-3';
-    } else {
-        status.innerHTML = '<i class="fas fa-exclamation-triangle text-danger"></i> Erreur Serveur';
-        status.className = 'small text-danger me-3';
-    }
+    if (!status) return;
+    status.innerHTML = isOnline ? '<i class="fas fa-sync fa-spin me-1"></i> Live' : '<i class="fas fa-exclamation-triangle"></i> Erreur';
+    status.className = isOnline ? 'small text-success me-3' : 'small text-danger me-3';
 }
 
 function initGraph(nodes, edges) {
+    const filteredEdges = edges.filter(e => {
+        const sourceNode = nodes.find(n => n.data.id === e.data.source);
+        return sourceNode && sourceNode.data.status === 'online';
+    });
+
     cy = cytoscape({
         container: document.getElementById('cy'),
-        elements: { nodes: nodes, edges: edges },
+        elements: { nodes: nodes, edges: filteredEdges },
         style: [
             {
                 selector: 'node',
@@ -92,140 +152,132 @@ function initGraph(nodes, edges) {
                     'width': '45px',
                     'height': '45px',
                     'background-fit': 'contain',
-                    'background-color': 'rgba(0,0,0,0)',
+                    'background-color': '#2c3e50',
+                    'background-image': function(ele){ 
+                        return ICON_MAP[ele.data('device_type')] || ICON_MAP['iot']; 
+                    },
                     'text-background-opacity': 0.7,
                     'text-background-color': '#000',
                     'text-background-shape': 'roundrectangle',
                     'text-background-padding': '3px'
                 }
             },
-            // États
-            {
-                selector: 'node[status = "offline"]',
-                style: { 'opacity': 0.3, 'filter': 'grayscale(1)', 'color': '#ff4444' }
+            { 
+                selector: 'node[status = "offline"]', 
+                style: { 
+                    'opacity': 0.5, 
+                    'background-color': '#3e1b1b',
+                    'border-width': '1px',
+                    'border-color': '#666'
+                } 
             },
-            // Types d'icônes dynamiques
-            {
-                selector: 'node[device_type = "router"]',
-                style: { 'background-image': 'https://img.icons8.com/fluency/96/router.png', 'width': '60px', 'height': '60px' }
+            { selector: 'node[device_type = "router"]', style: { 'width': '65px', 'height': '65px' } },
+            { 
+                selector: 'edge', 
+                style: { 
+                    'width': 2, 
+                    'line-color': '#00bcd4', 
+                    'curve-style': 'bezier', 
+                    'opacity': 0.2,
+                    'target-arrow-shape': 'triangle',
+                    'target-arrow-color': '#00bcd4'
+                } 
             },
-            {
-                selector: 'node[device_type = "server"]',
-                style: { 'background-image': 'https://img.icons8.com/fluency/96/server.png' }
-            },
-            {
-                selector: 'node[device_type = "smartphone"]',
-                style: { 'background-image': 'https://img.icons8.com/fluency/96/smartphone.png' }
-            },
-            {
-                selector: 'node[device_type = "printer"]',
-                style: { 'background-image': 'https://img.icons8.com/fluency/96/print.png' }
-            },
-            {
-                selector: 'node[device_type = "computer"]',
-                style: { 'background-image': 'https://img.icons8.com/fluency/96/laptop.png' }
-            },
-            {
-                selector: 'node[device_type = "cloud"]',
-                style: { 'background-image': 'https://img.icons8.com/fluency/96/cloud.png' }
-            },
-            {
-                selector: 'edge',
-                style: {
-                    'width': 2,
-                    'line-color': '#00bcd4',
-                    'curve-style': 'bezier',
-                    'opacity': 0.3,
-                    'target-arrow-shape': 'none'
-                }
-            },
-            {
-                selector: 'node:selected',
-                style: { 'border-width': '2px', 'border-color': '#ff9800', 'border-opacity': 1 }
-            }
+            { selector: 'node:selected', style: { 'border-width': '3px', 'border-color': '#00bcd4' } }
         ],
-        layout: { name: 'cose', animate: true, nodeRepulsion: 10000, padding: 50 }
+        layout: { 
+            name: 'cose', 
+            animate: false,
+            nodeRepulsion: 10000,
+            padding: 50 
+        }
     });
 
-    cy.on('tap', 'node', (evt) => renderDetails(evt.target.data(), evt.target.style('background-image')));
+    cy.on('tap', 'node', (evt) => renderDetails(evt.target.data()));
 }
 
 function updateGraph(newNodes, newEdges) {
-    let changed = false;
+    if (!cy) return;
+    const newNodeIds = newNodes.map(n => n.data.id);
 
-    // Mise à jour des Noeuds
+    cy.nodes().forEach(node => {
+        if (!newNodeIds.includes(node.id())) {
+            node.remove();
+        }
+    });
+
     newNodes.forEach(n => {
         let node = cy.$id(n.data.id);
         if (node.length === 0) {
             cy.add(n);
-            changed = true;
         } else {
-            node.data(n.data); // Update status/usage
+            node.data(n.data);
         }
     });
 
-    // Nettoyage et ajout des Edges
-    let newEdgeIds = newEdges.map(e => e.data.id);
-    cy.edges().forEach(e => {
-        if (!newEdgeIds.includes(e.id())) { cy.remove(e); changed = true; }
-    });
+    cy.edges().remove();
     newEdges.forEach(e => {
-        if (cy.$id(e.data.id).length === 0) { cy.add(e); changed = true; }
+        const sourceNodeData = newNodes.find(n => n.data.id === e.data.source);
+        if (sourceNodeData && sourceNodeData.data.status === 'online') {
+            cy.add(e);
+        }
     });
-
-    // Ne relancer le layout que si de nouveaux éléments apparaissent
-    if (changed) {
-        // cy.layout({ name: 'cose', animate: true, fit: false }).run();
-    }
 }
 
-function renderDetails(data, iconUrl) {
-    const cleanIcon = iconUrl.replace(/url\(['"]?([^'"]*)['"]?\)/, '$1');
-    document.getElementById('details-panel').innerHTML = `
+function renderDetails(data) {
+    const statusColor = data.status === 'online' ? 'success' : 'danger';
+    let sitesHtml = '<p class="text-muted small mt-2">Aucun site détecté</p>';
+    if (data.sites && data.sites.length > 0) {
+        sitesHtml = data.sites.map(site => 
+            `<span class="badge bg-dark border border-info text-info mb-1 me-1" style="font-size: 0.7rem; font-weight: normal;">${site}</span>`
+        ).join('');
+    }
+
+    let html = `
         <div class="text-center mb-4">
-            <img src="${cleanIcon}" width="64" class="mb-2">
-            <h6 class="text-info mb-0"><b>${data.label}</b></h6>
-            <small class="text-${data.status === 'online' ? 'success' : 'danger'} text-uppercase">${data.status}</small>
+            <h6 class="text-info mb-1"><b>${data.label.split('\n')[0]}</b></h6>
+            <span class="badge bg-${statusColor} pulse-tiny">${data.status.toUpperCase()}</span>
         </div>
+        
         <div class="list-group list-group-flush bg-transparent">
             <div class="list-group-item bg-transparent text-white border-secondary px-0 d-flex justify-content-between">
-                <small class="text-muted">IP</small>
-                <code class="text-cyan">${data.ip}</code>
+                <small class="text-muted">IP</small><code>${data.ip}</code>
             </div>
             <div class="list-group-item bg-transparent text-white border-secondary px-0 d-flex justify-content-between">
-                <small class="text-muted">TYPE</small>
-                <span class="badge bg-outline-info text-uppercase">${data.device_type}</span>
+                <small class="text-muted">MAC</small><small class="text-muted" style="font-size:0.7rem">${data.mac}</small>
             </div>
             <div class="list-group-item bg-transparent text-white border-secondary px-0 d-flex justify-content-between">
-                <small class="text-muted">TRAFIC</small>
-                <span class="text-warning">${data.usage || '0 Mo'}</span>
+                <small class="text-muted">Type</small><span class="badge bg-secondary text-capitalize">${data.device_type}</span>
             </div>
             <div class="list-group-item bg-transparent text-white border-secondary px-0 d-flex justify-content-between">
-                <small class="text-muted">VU LE</small>
-                <small>${data.last_seen}</small>
+                <small class="text-muted">Trafic</small><span class="text-warning fw-bold">${data.usage}</span>
+            </div>
+            <div class="list-group-item bg-transparent text-white border-secondary px-0 d-flex justify-content-between">
+                <small class="text-muted">Dernière vue</small><small>${data.last_seen}</small>
             </div>
         </div>
-        <div class="mt-4 text-center">
-            <button class="btn btn-sm btn-outline-danger w-100 py-1" onclick="alert('Scan de vulnérabilités lancé sur ${data.ip}')">
-                <i class="fas fa-shield-alt me-1"></i> SCAN VULN
-            </button>
+
+        <div class="mt-4">
+            <label class="small text-uppercase text-muted fw-bold mb-2" style="letter-spacing: 1px;">Résolutions DNS</label>
+            <div class="d-flex flex-wrap">
+                ${sitesHtml}
+            </div>
         </div>
+
+        <button class="btn btn-sm btn-outline-info w-100 mt-4" onclick="alert('Analyse approfondie de ${data.ip}...')">
+            <i class="fas fa-search me-1"></i> SCAN DE VULNÉRABILITÉ
+        </button>
     `;
+    document.getElementById('details-panel').innerHTML = html;
 }
 
 function manualRefresh() { loadData(false); }
 
-document.addEventListener('DOMContentLoaded', () => {
-    loadData(true);
-    setInterval(() => loadData(false), REFRESH_RATE);
+// Utilisation de 'load' pour garantir que le conteneur est prêt
+window.addEventListener('load', () => {
+    loadData(true).then(() => {
+        setTimeout(() => loadData(false), REFRESH_RATE);
+    });
 });
 </script>
-
-<style>
-    #cy { transition: opacity 0.3s ease; }
-    .bg-darker { background-color: #08090a; }
-    .text-cyan { color: #00e5ff; }
-    .list-group-item { border-bottom: 1px dashed #333 !important; font-size: 0.85rem; }
-    .badge-outline-info { border: 1px solid #00bcd4; color: #00bcd4; }
-</style>
 {% endblock %}
