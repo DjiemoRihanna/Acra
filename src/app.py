@@ -48,7 +48,7 @@ app.config['MAIL_PORT'] = 587
 app.config['MAIL_USE_TLS'] = True
 app.config['MAIL_USE_SSL'] = False
 app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME', 'acranoreply@gmail.com')
-app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD', '')
+app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD', 'ftgn avso qpfg ewbl')
 app.config['MAIL_DEFAULT_SENDER'] = ('ACRA SOC', app.config['MAIL_USERNAME'])
 
 app.config['MAIL_SUPPRESS_SEND'] = False

@@ -1,15 +1,14 @@
-def evaluate_and_block(ip, ti_score, priority):
-    """Logique de décision critique."""
-    final_score = 0
-    
-    # RÈGLE DU COUPE-CIRCUIT
-    # Si Signature Critique (P1) OU TI très élevé (>= 80)
-    if priority == 1 or ti_score >= 80:
-        final_score = 100
-        print(f"----------------------------------------------------------------------------")
-        print(f"⛔ [COUPE-CIRCUIT] Menace Critique détectée sur {ip} !")
-    else:
-        # Calcul pondéré simple pour les autres cas
-        final_score = ti_score * 0.5 
+import logging
+from src.core.constants import CRITICAL_PRIORITY_THRESHOLD, CRITICAL_TI_THRESHOLD, SCORE_MULTIPLIER_DEFAULT
 
-    return final_score
+# Configuration du logger
+logger = logging.getLogger(__name__)
+
+def evaluate_and_block(ip, ti_score, priority):
+    """Évalue la dangerosité et décide du blocage."""
+    
+    if priority <= CRITICAL_PRIORITY_THRESHOLD or ti_score >= CRITICAL_TI_THRESHOLD:
+        logger.warning(f"COUPE-CIRCUIT : Menace critique identifiée pour l'IP {ip} (Score TI: {ti_score}, Priorité: {priority})")
+        return 100.0
+    
+    return float(ti_score * SCORE_MULTIPLIER_DEFAULT)

@@ -1,46 +1,50 @@
+import logging
 import socket
 from src.ingestion.suricata_stream import stream_alerts
 from src.detection.ti_client import TIClient
 from src.core.circuit_breaker import evaluate_and_block
 
-class SignatureAnalyzer:
-    def __init__(self):
-        self.ti = TIClient()
+# CONFIGURATION DU LOGGING GLOBAL
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.FileHandler("logs/acra.log"), # Écrit dans un fichier
+        logging.StreamHandler()              # Affiche dans la console
+    ]
+)
+logger = logging.getLogger(__name__)
 
-    def get_hostname(self, ip):
-        """Résolution DNS inversée pour identifier la machine."""
+def get_hostname(ip):
+    try:
+        return socket.gethostbyaddr(ip)[0]
+    except (socket.herror, socket.gaierror):
+        return "Machine Inconnue"
+
+def process_alerts():
+    ti_client = TIClient()
+    logger.info("Moteur d'analyse NDR démarré...")
+
+    for alert_data in stream_alerts():
         try:
-            return socket.gethostbyaddr(ip)[0]
-        except:
-            return "Machine Inconnue"
+            alert = alert_data.get("alert", {})
+            src_ip = alert_data.get("src_ip")
+            if not src_ip: continue
 
-    def run(self):
-        for event in stream_alerts():
-            alert_data = event.get('alert', {})
-            src_ip = event.get('src_ip')
-            dest_ip = event.get('dest_ip')
+            priority = alert.get("priority", 3)
+            signature = alert.get("signature", "N/A")
             
-            # Identification des machines
-            src_name = self.get_hostname(src_ip)
-            
-            prio = alert_data.get('priority') or alert_data.get('severity')
-            signature = alert_data.get('signature')
+            ti_score = ti_client.get_score(src_ip)
+            final_score = evaluate_and_block(src_ip, ti_score, priority)
 
-            # 1. Obtenir réputation
-            ti_score = self.ti.get_ip_reputation(src_ip)
-            
-            # 2. Calculer score et vérifier Coupe-Circuit
-            final_score = evaluate_and_block(
-                ip=src_ip, 
-                ti_score=ti_score, 
-                priority=prio
-            )
+            # Remplacement des print par logger.info
+            logger.info(f"DÉTECTION : {signature} | Origine: {src_ip} ({get_hostname(src_ip)}) | Score: {final_score}")
 
-            print(f"\n[DÉTECTION RÉELLE]")
-            print(f"🚨 Menace : {signature}")
-            print(f"🖥️  Origine : {src_ip} ({src_name}) -> Dest: {dest_ip}")
-            print(f"📊 Priorité: {prio} | Score TI: {ti_score} | SCORE FINAL: {final_score}")
+            if final_score == 100:
+                logger.critical(f"ACTION : Blocage immédiat requis pour {src_ip}")
+
+        except Exception as e:
+            logger.error(f"Erreur lors du traitement de l'alerte : {e}")
 
 if __name__ == "__main__":
-    analyzer = SignatureAnalyzer()
-    analyzer.run()
+    process_alerts()

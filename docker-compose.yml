@@ -56,7 +56,7 @@ services:
             - MAIL_SERVER=smtp.gmail.com
             - MAIL_PORT=587
             - MAIL_USERNAME=acranoreply@gmail.com    
-            - MAIL_PASSWORD=      
+            - MAIL_PASSWORD=ftgn avso qpfg ewbl      
             - MAIL_USE_TLS=True
             - MAIL_DEFAULT_SENDER=acranoreply@gmail.com
             # ----------------------------------
