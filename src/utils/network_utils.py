@@ -6,7 +6,7 @@ def get_soc_ip():
     Priorité : Ethernet, puis Wi-Fi, puis VM Bridges.
     """
     # Liste des interfaces courantes (Kali, Ubuntu, VM)
-    interfaces = ['eth0', 'wlan0', 'enp0s3', 'eth1', 'br0']
+    interfaces = ['eth0', 'wlan0', 'enp0s3', 'eth1', 'br0', 'wlp2s0']
     
     for iface in interfaces:
         try:

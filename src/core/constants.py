@@ -1,0 +1,10 @@
+# Configuration Redis
+REDIS_HOST = 'localhost'
+REDIS_PORT = 6379
+REDIS_DB = 0
+REDIS_BLACKLIST_KEY = 'blacklist_ips'
+
+# Seuils de score
+CRITICAL_PRIORITY_THRESHOLD = 2
+CRITICAL_TI_THRESHOLD = 80
+SCORE_MULTIPLIER_DEFAULT = 0.5
