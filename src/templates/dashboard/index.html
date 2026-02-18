@@ -152,12 +152,10 @@
     function syncChartWidth() {
         if (networkFlowChart) {
             const pointCount = networkFlowChart.data.labels.length;
-            // On réduit de 60 à 20 pixels par point pour gagner de la place
             const minWidthPerPoint = 20; 
             let calculatedWidth = pointCount * minWidthPerPoint;
             const containerWidth = scrollArea.clientWidth;
 
-            // ON LIMITE la largeur à 15 000 pixels max pour éviter le crash Canvas
             if (calculatedWidth > 15000) calculatedWidth = 15000;
 
             if (calculatedWidth > containerWidth) {
@@ -170,9 +168,8 @@
         }
     }
 
-    // --- APPEL AU CHARGEMENT (Pour les données historiques) ---
+    // --- APPEL AU CHARGEMENT ---
     window.addEventListener('load', () => {
-        // Petit délai pour laisser le temps à Chart.js de se dessiner via main.js
         setTimeout(syncChartWidth, 500);
     });
 
@@ -182,7 +179,8 @@
         statusText.innerText = "Observation Active";
     });
 
-    socket.on('update_graph', function(msg) {
+    // UNIQUEMENT les données Zeek (flux réseau) pour index.html
+    socket.on('zeek_flow', function(msg) {
         if (networkFlowChart) {
             const now = new Date();
             const timeLabel = now.getHours().toString().padStart(2, '0') + ":" + 
@@ -192,9 +190,7 @@
             networkFlowChart.data.labels.push(timeLabel);
             networkFlowChart.data.datasets[0].data.push(msg.volume);
 
-            // Mise à jour de l'étirement en temps réel
             syncChartWidth();
-
             networkFlowChart.update('none'); 
             
             indicator.style.textShadow = "0 0 15px #00bcd4";
@@ -207,5 +203,7 @@
         indicator.style.color = "#e74c3c";
         statusText.innerText = "Sonde Déconnectée";
     });
+
+    // On ignore délibérément les événements scapy_* ici car ils sont pour topology.html
 </script>
 {% endblock %}

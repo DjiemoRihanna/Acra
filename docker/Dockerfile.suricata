@@ -1,0 +1,32 @@
+# Base Debian
+FROM debian:12
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Installation des dépendances système
+RUN apt-get update && apt-get install -y \
+    suricata \
+    curl \
+    jq \
+    bash \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Création des répertoires
+RUN mkdir -p /var/log/suricata \
+    /etc/suricata \
+    /var/lib/suricata/rules
+
+# Copie de la configuration
+COPY docker/config/suricata.yaml /etc/suricata/suricata.yaml
+
+# Copie des scripts
+COPY scripts/update_signatures.sh /usr/local/bin/update-signatures.sh
+COPY docker/suricata-entrypoint.sh /entrypoint.sh
+
+RUN chmod +x /usr/local/bin/update-signatures.sh && \
+    chmod +x /entrypoint.sh
+
+EXPOSE 5636
+
+ENTRYPOINT ["/entrypoint.sh"]

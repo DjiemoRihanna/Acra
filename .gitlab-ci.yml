@@ -1,0 +1,279 @@
+# Pipeline CI/CD pour ACRA SOC
+# Stages: build → test → deploy
+
+stages:
+  - build
+  - test
+  - deploy
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: ""
+  DOCKER_REGISTRY: ${CI_REGISTRY_IMAGE}
+  VERSION: ${CI_COMMIT_SHORT_SHA}
+  LATEST_TAG: latest
+
+# Cache Docker layers pour accélérer les builds
+cache:
+  paths:
+    - .cache/pip
+    - docker/
+
+# ========================================
+# STAGE 1: BUILD
+# ========================================
+
+build-web:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+  script:
+    - echo "🔨 Building web image..."
+    - docker build -f docker/Dockerfile.web -t ${DOCKER_REGISTRY}/web:${VERSION} .
+    - docker tag ${DOCKER_REGISTRY}/web:${VERSION} ${DOCKER_REGISTRY}/web:${LATEST_TAG}
+    - docker push ${DOCKER_REGISTRY}/web:${VERSION}
+    - docker push ${DOCKER_REGISTRY}/web:${LATEST_TAG}
+  only:
+    - main
+    - tags
+
+build-zeek:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+  script:
+    - echo "🔨 Building zeek image..."
+    - docker build -f docker/Dockerfile.zeek -t ${DOCKER_REGISTRY}/zeek:${VERSION} .
+    - docker tag ${DOCKER_REGISTRY}/zeek:${VERSION} ${DOCKER_REGISTRY}/zeek:${LATEST_TAG}
+    - docker push ${DOCKER_REGISTRY}/zeek:${VERSION}
+    - docker push ${DOCKER_REGISTRY}/zeek:${LATEST_TAG}
+  only:
+    - main
+    - tags
+
+build-zeek-streamer:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+  script:
+    - echo "🔨 Building zeek-streamer image..."
+    - docker build -f docker/Dockerfile.web -t ${DOCKER_REGISTRY}/zeek-streamer:${VERSION} .
+    - docker tag ${DOCKER_REGISTRY}/zeek-streamer:${VERSION} ${DOCKER_REGISTRY}/zeek-streamer:${LATEST_TAG}
+    - docker push ${DOCKER_REGISTRY}/zeek-streamer:${VERSION}
+    - docker push ${DOCKER_REGISTRY}/zeek-streamer:${LATEST_TAG}
+  only:
+    - main
+    - tags
+
+build-suricata:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+  script:
+    - echo "🔨 Building suricata image..."
+    - docker build -f docker/Dockerfile.suricata -t ${DOCKER_REGISTRY}/suricata:${VERSION} .
+    - docker tag ${DOCKER_REGISTRY}/suricata:${VERSION} ${DOCKER_REGISTRY}/suricata:${LATEST_TAG}
+    - docker push ${DOCKER_REGISTRY}/suricata:${VERSION}
+    - docker push ${DOCKER_REGISTRY}/suricata:${LATEST_TAG}
+  only:
+    - main
+    - tags
+
+build-suricata-streamer:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+  script:
+    - echo "🔨 Building suricata-streamer image..."
+    - docker build -f docker/Dockerfile.web -t ${DOCKER_REGISTRY}/suricata-streamer:${VERSION} .
+    - docker tag ${DOCKER_REGISTRY}/suricata-streamer:${VERSION} ${DOCKER_REGISTRY}/suricata-streamer:${LATEST_TAG}
+    - docker push ${DOCKER_REGISTRY}/suricata-streamer:${VERSION}
+    - docker push ${DOCKER_REGISTRY}/suricata-streamer:${LATEST_TAG}
+  only:
+    - main
+    - tags
+
+build-scapy:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+  script:
+    - echo "🔨 Building scapy-capture image..."
+    - docker build -f docker/Dockerfile.web -t ${DOCKER_REGISTRY}/scapy-capture:${VERSION} .
+    - docker tag ${DOCKER_REGISTRY}/scapy-capture:${VERSION} ${DOCKER_REGISTRY}/scapy-capture:${LATEST_TAG}
+    - docker push ${DOCKER_REGISTRY}/scapy-capture:${VERSION}
+    - docker push ${DOCKER_REGISTRY}/scapy-capture:${LATEST_TAG}
+  only:
+    - main
+    - tags
+
+build-ml:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+  script:
+    - echo "🔨 Building ml-service image..."
+    - docker build -f docker/Dockerfile.ml -t ${DOCKER_REGISTRY}/ml-service:${VERSION} .
+    - docker tag ${DOCKER_REGISTRY}/ml-service:${VERSION} ${DOCKER_REGISTRY}/ml-service:${LATEST_TAG}
+    - docker push ${DOCKER_REGISTRY}/ml-service:${VERSION}
+    - docker push ${DOCKER_REGISTRY}/ml-service:${LATEST_TAG}
+  only:
+    - main
+    - tags
+
+# ========================================
+# STAGE 2: TEST
+# ========================================
+
+test:
+  stage: test
+  image: docker/compose:latest
+  services:
+    - docker:dind
+  before_script:
+    - apk add --no-cache python3 py3-pip
+    - pip3 install netifaces
+    - cp .env.example .env
+  script:
+    - echo "🧪 Lancement des tests..."
+    
+    # Test de la configuration
+    - echo "🔍 Test de la configuration..."
+    - python3 -c "from src.utils.network_utils import get_soc_interface; print(f'Interface détectée: {get_soc_interface()}')"
+    
+    # Build et démarrage des services
+    - echo "🚀 Démarrage des services pour tests..."
+    - docker-compose up -d
+    - sleep 30
+    
+    # Healthcheck
+    - echo "🔍 Vérification des services..."
+    - ./scripts/healthcheck.sh
+    
+    # Test base de données
+    - echo "🔍 Test base de données..."
+    - ./scripts/test-database.sh
+    
+    # Test API
+    - echo "🔍 Test API..."
+    - curl -f http://localhost:5000/api/system/health || exit 1
+    
+    # Test de création d'utilisateur admin
+    - echo "🔍 Test initialisation..."
+    - python3 -c "
+import requests
+data = {'username': 'admin', 'email': 'admin@acra.local', 'password': 'Test1234!'}
+r = requests.post('http://localhost:5000/auth/setup', json=data)
+print(f'Setup: {r.status_code}')
+"
+    
+    # Logs pour debug
+    - docker-compose logs --tail=50
+    
+  after_script:
+    - docker-compose down -v
+  only:
+    - merge_requests
+    - main
+
+# ========================================
+# STAGE 3: DEPLOY
+# ========================================
+
+deploy-staging:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache openssh-client bash
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add - > /dev/null
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+  script:
+    - echo "🚀 Déploiement vers l'environnement de staging..."
+    
+    # Copie des fichiers
+    - scp -o StrictHostKeyChecking=no -r .env.example docker-compose.yml scripts/ ${STAGING_USER}@${STAGING_HOST}:~/acra/
+    
+    # Connexion et déploiement
+    - ssh -o StrictHostKeyChecking=no ${STAGING_USER}@${STAGING_HOST} "
+        cd ~/acra &&
+        cp .env.example .env &&
+        sed -i 's/^WEB_PORT=.*/WEB_PORT=5000/' .env &&
+        docker-compose pull &&
+        docker-compose up -d
+      "
+  environment:
+    name: staging
+    url: http://${STAGING_HOST}:5000
+  only:
+    - main
+  when: manual
+
+deploy-production:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache openssh-client bash
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add - > /dev/null
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+  script:
+    - echo "🚀 Déploiement vers l'environnement de production..."
+    
+    # Copie des fichiers
+    - scp -o StrictHostKeyChecking=no -r .env.example docker-compose.yml scripts/ ${PROD_USER}@${PROD_HOST}:~/acra/
+    
+    # Connexion et déploiement
+    - ssh -o StrictHostKeyChecking=no ${PROD_USER}@${PROD_HOST} "
+        cd ~/acra &&
+        cp .env.example .env &&
+        sed -i 's/^WEB_PORT=.*/WEB_PORT=80/' .env &&
+        sed -i 's/^FLASK_DEBUG=.*/FLASK_DEBUG=False/' .env &&
+        docker-compose pull &&
+        docker-compose up -d
+      "
+  environment:
+    name: production
+    url: http://${PROD_HOST}
+  only:
+    - tags
+  when: manual
+
+# ========================================
+# JOBS ANNEXES
+# ========================================
+
+update-signatures:
+  stage: deploy
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - echo "🔄 Mise à jour des signatures Suricata..."
+    - docker run --rm -v ${PWD}/scripts:/scripts alpine:latest sh /scripts/update_signatures.sh
+  only:
+    - schedules
+  schedule: "0 2 * * *"  # Tous les jours à 2h du matin

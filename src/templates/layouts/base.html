@@ -7,8 +7,9 @@
     
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛡️</text></svg>">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
-    
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v6.0.0-beta3/css/all.css">
     <style>
         /* --- STRUCTURE DE BASE FIXE --- */
         body { 
@@ -103,33 +104,58 @@
         </div>
         
         <nav style="flex: 1; display: flex; flex-direction: column; padding-top: 10px;">
+            <!-- Dashboard -->
             <a href="{{ url_for('auth.dashboard') }}" class="nav-item {{ 'active' if request.endpoint == 'auth.dashboard' }}">
                 <i class="fas fa-th-large"></i> <span>Dashboard SOC</span>
             </a>
 
-            <a href="{{ url_for('network.topology_view') }}" class="nav-item {{ 'active' if request.endpoint == 'network.topology_view' }}">
+            <!-- Topologie Réseau -->
+            <a href="{{ url_for('network_html.topology_view') }}" class="nav-item {{ 'active' if request.endpoint == 'network_html.topology_view' }}">
                 <i class="fas fa-project-diagram"></i> <span>Topologie Réseau</span>
             </a>
             
-            <a href="#" class="nav-item"><i class="fas fa-exclamation-triangle"></i> <span>Centre d'Alertes</span></a>
+            <!-- Centre d'Alertes (UC15) -->
+            <a href="{{ url_for('alerts_html.list_alerts') }}" class="nav-item {{ 'active' if request.endpoint and 'alerts_html' in request.endpoint }}">
+                <i class="fas fa-exclamation-triangle"></i> <span>Centre d'Alertes</span>
+            </a>
             
+            <!-- Log Explorer (UC19) -->
             <a href="{{ url_for('system.view_audit_logs') }}" class="nav-item {{ 'active' if request.endpoint == 'system.view_audit_logs' }}">
                 <i class="fas fa-terminal"></i> <span>Log Explorer</span>
             </a>
             
-            <a href="#" class="nav-item"><i class="fas fa-hand-fist"></i> <span>Console de Riposte</span></a>
-            <a href="#" class="nav-item"><i class="fas fa-heartbeat"></i> <span>Gestion Continuité</span></a>
+            <!-- Console de Riposte (UC20-24) -->
+            <a href="#" class="nav-item">
+                <i class="fas fa-hand-fist"></i> <span>Console de Riposte</span>
+            </a>
+            
+            <!-- Gestion Continuité (UC25-29) -->
+            <a href="#" class="nav-item">
+                <i class="fas fa-heartbeat"></i> <span>Gestion Continuité</span>
+            </a>
 
             <div style="height: 1px; background: var(--border-color); margin: 10px 20px; opacity: 0.3;"></div>
 
+            <!-- Configuration Système (UC16-17) - Admin & Analyste Senior uniquement -->
+            {% if current_user.is_authenticated and current_user.role.value in ['admin', 'analyst_senior'] %}
+            <a href="{{ url_for('system.config_page') }}" class="nav-item {{ 'active' if request.endpoint == 'system.config_page' }}">
+                <i class="fas fa-cog"></i> <span>Configuration</span>
+            </a>
+            {% endif %}
+
+            <!-- Gestion Utilisateurs (UC07) - Admin uniquement -->
+            {% if current_user.is_authenticated and current_user.role.value == 'admin' %}
             <a href="{{ url_for('auth.manage_users') }}" class="nav-item {{ 'active' if request.endpoint == 'auth.manage_users' }}">
                 <i class="fas fa-user-shield"></i> <span>Gestion Utilisateurs</span>
             </a>
+            {% endif %}
 
+            <!-- Mon Profil (UC10-13) -->
             <a href="{{ url_for('auth.profile') }}" class="nav-item {{ 'active' if request.endpoint == 'auth.profile' }}">
                 <i class="fas fa-user-circle"></i> <span>Mon Profil</span>
             </a>
             
+            <!-- Déconnexion -->
             <a href="{{ url_for('auth.logout') }}" class="nav-item" style="margin-top: auto; color: #ff6b6b; border-top: 1px solid var(--border-color);">
                 <i class="fas fa-sign-out-alt"></i> <span>Déconnexion</span>
             </a>
@@ -140,7 +166,7 @@
         
         <header style="background: var(--header-bg); padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color);">
             <div style="font-weight: bold; font-size: 18px; color: var(--acra-cyan); text-transform: uppercase; letter-spacing: 1px;">
-                {% block title %}Système ACRA{% endblock %}
+                {% block title %}Système ACRA v2.0{% endblock %}
             </div>
             
             <div class="user-info" style="display: flex; align-items: center; gap: 10px; background: var(--input-bg); padding: 5px 15px; border-radius: 20px; border: 1px solid var(--border-color);">

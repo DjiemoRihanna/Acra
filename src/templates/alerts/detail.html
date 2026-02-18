@@ -1,0 +1,690 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Détail Alerte - ACRA SOC{% endblock %}
+
+{% block content %}
+<style>
+    /* Style Cyber SOC */
+    :root {
+        --acra-cyan: #00bcd4;
+        --acra-dark: #0a0c0e;
+        --acra-darker: #050607;
+        --acra-card: #1a1c1e;
+        --acra-border: #2a2c2e;
+        --acra-success: #2ecc71;
+        --acra-warning: #f39c12;
+        --acra-danger: #e74c3c;
+        --acra-info: #3498db;
+        --acra-purple: #9b59b6;
+    }
+
+    body {
+        background-color: var(--acra-darker);
+        font-family: 'Inter', 'Segoe UI', sans-serif;
+    }
+
+    /* En-tête */
+    .detail-header {
+        background: var(--acra-card);
+        border: 1px solid var(--acra-border);
+        border-radius: 12px;
+        padding: 20px 30px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    }
+
+    .severity-display {
+        display: inline-block;
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 1.2rem;
+    }
+
+    .severity-P1 { background: var(--acra-danger); color: white; }
+    .severity-P2 { background: var(--acra-warning); color: black; }
+    .severity-P3 { background: var(--acra-info); color: white; }
+    .severity-P4 { background: var(--acra-success); color: black; }
+    .severity-P5 { background: #7f8c8d; color: white; }
+
+    .status-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+
+    .status-new { background: var(--acra-danger); color: white; }
+    .status-in_progress { background: var(--acra-warning); color: black; }
+    .status-resolved { background: var(--acra-success); color: black; }
+    .status-false_positive { background: #7f8c8d; color: white; }
+
+    /* Cartes de score */
+    .score-card {
+        background: var(--acra-dark);
+        border: 1px solid var(--acra-border);
+        border-radius: 8px;
+        padding: 15px;
+        text-align: center;
+    }
+
+    .score-value {
+        font-size: 2.5rem;
+        font-weight: 700;
+        line-height: 1;
+    }
+
+    .score-label {
+        color: #888;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        margin-top: 5px;
+    }
+
+    .score-progress {
+        height: 8px;
+        border-radius: 4px;
+        margin-top: 10px;
+    }
+
+    /* Timeline */
+    .timeline {
+        position: relative;
+        padding: 20px 0;
+    }
+
+    .timeline-item {
+        position: relative;
+        padding-left: 30px;
+        margin-bottom: 20px;
+    }
+
+    .timeline-item::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: var(--acra-cyan);
+    }
+
+    .timeline-item::after {
+        content: '';
+        position: absolute;
+        left: 5px;
+        top: 12px;
+        width: 2px;
+        height: calc(100% - 5px);
+        background: var(--acra-border);
+    }
+
+    .timeline-item:last-child::after {
+        display: none;
+    }
+
+    /* Evidence items */
+    .evidence-item {
+        background: var(--acra-dark);
+        border: 1px solid var(--acra-border);
+        border-radius: 6px;
+        padding: 10px 15px;
+        margin-bottom: 8px;
+        font-family: 'Courier New', monospace;
+        font-size: 0.85rem;
+    }
+
+    /* Navigation tabs */
+    .nav-tabs {
+        border-bottom-color: var(--acra-border);
+    }
+
+    .nav-tabs .nav-link {
+        color: #888;
+        border: none;
+        padding: 10px 20px;
+    }
+
+    .nav-tabs .nav-link:hover {
+        color: white;
+        border: none;
+    }
+
+    .nav-tabs .nav-link.active {
+        background: transparent;
+        color: var(--acra-cyan);
+        border-bottom: 2px solid var(--acra-cyan);
+    }
+
+    /* Badges */
+    .risk-badge {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .risk-critical { background: var(--acra-danger); color: white; }
+    .risk-high { background: var(--acra-warning); color: black; }
+    .risk-medium { background: var(--acra-info); color: white; }
+    .risk-low { background: var(--acra-success); color: black; }
+
+    /* JSON viewer */
+    .json-viewer {
+        background: var(--acra-dark);
+        border: 1px solid var(--acra-border);
+        border-radius: 6px;
+        padding: 15px;
+        font-family: 'Courier New', monospace;
+        font-size: 0.85rem;
+        max-height: 400px;
+        overflow-y: auto;
+    }
+
+    .json-key { color: var(--acra-cyan); }
+    .json-string { color: var(--acra-success); }
+    .json-number { color: var(--acra-warning); }
+    .json-boolean { color: var(--acra-danger); }
+</style>
+
+<div class="container-fluid px-4">
+    <!-- Navigation -->
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/dashboard" class="text-info">Dashboard</a></li>
+            <li class="breadcrumb-item"><a href="/alerts/list" class="text-info">Alertes</a></li>
+            <li class="breadcrumb-item active text-white" aria-current="page">Détail alerte #{{ alert.uuid[:8] }}</li>
+        </ol>
+    </nav>
+
+    <!-- En-tête avec actions -->
+    <div class="detail-header">
+        <div class="d-flex justify-content-between align-items-start">
+            <div>
+                <div class="d-flex align-items-center gap-3 mb-3">
+                    <span class="severity-display severity-{{ alert.severity }}">
+                        {{ alert.severity }} - 
+                        {% if alert.severity == 'P1' %}Critique
+                        {% elif alert.severity == 'P2' %}Haute
+                        {% elif alert.severity == 'P3' %}Moyenne
+                        {% elif alert.severity == 'P4' %}Basse
+                        {% else %}Information
+                        {% endif %}
+                    </span>
+                    <span class="status-badge status-{{ alert.status }}">
+                        {{ alert.status|replace('_', ' ')|title }}
+                    </span>
+                    <span class="text-muted">
+                        <i class="fas fa-clock me-1"></i>
+                        {{ alert.detected_at|datetime }}
+                    </span>
+                </div>
+                <h3 class="text-white">{{ alert.description or 'Alerte détectée' }}</h3>
+                <p class="text-muted mb-0">ID: {{ alert.uuid }}</p>
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-info" onclick="refreshAlert()">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+                <button class="btn btn-outline-warning" onclick="editStatus()">
+                    <i class="fas fa-edit"></i> Changer statut
+                </button>
+                <button class="btn btn-info" onclick="startInvestigation()">
+                    <i class="fas fa-search"></i> Investiguer
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation tabs -->
+    <ul class="nav nav-tabs mb-4" id="alertTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" 
+                    type="button" role="tab">Vue d'ensemble</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="evidence-tab" data-bs-toggle="tab" data-bs-target="#evidence" 
+                    type="button" role="tab">Preuves</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="timeline-tab" data-bs-toggle="tab" data-bs-target="#timeline" 
+                    type="button" role="tab">Timeline</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="raw-tab" data-bs-toggle="tab" data-bs-target="#raw" 
+                    type="button" role="tab">Données brutes</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="investigation-tab" data-bs-toggle="tab" data-bs-target="#investigation" 
+                    type="button" role="tab">Investigation</button>
+        </li>
+    </ul>
+
+    <!-- Contenu des tabs -->
+    <div class="tab-content" id="alertTabsContent">
+        <!-- Vue d'ensemble -->
+        <div class="tab-pane fade show active" id="overview" role="tabpanel">
+            <div class="row">
+                <!-- Colonne gauche : Informations réseau -->
+                <div class="col-md-6">
+                    <div class="card bg-dark text-white border-secondary mb-4">
+                        <div class="card-header border-secondary">
+                            <h5 class="mb-0"><i class="fas fa-network-wired me-2 text-info"></i>Informations réseau</h5>
+                        </div>
+                        <div class="card-body">
+                            <table class="table table-dark table-borderless">
+                                <tr>
+                                    <td class="text-muted" style="width: 40%;">IP Source</td>
+                                    <td>
+                                        <strong>{{ alert.source_ip }}</strong>
+                                        {% if alert.source_port %}:{{ alert.source_port }}{% endif %}
+                                        <a href="#" class="text-info ms-2" onclick="searchIP('{{ alert.source_ip }}')">
+                                            <i class="fas fa-search"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">IP Destination</td>
+                                    <td>
+                                        <strong>{{ alert.destination_ip }}</strong>
+                                        {% if alert.destination_port %}:{{ alert.destination_port }}{% endif %}
+                                        <a href="#" class="text-info ms-2" onclick="searchIP('{{ alert.destination_ip }}')">
+                                            <i class="fas fa-search"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Protocole</td>
+                                    <td>{{ alert.protocol or 'N/A' }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Catégorie</td>
+                                    <td>
+                                        <span class="badge bg-secondary">{{ alert.category|replace('_', ' ')|title }}</span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Détection source</td>
+                                    <td>
+                                        <span class="badge bg-info">{{ alert.detection_source|title }}</span>
+                                    </td>
+                                </tr>
+                                {% if alert.rule %}
+                                <tr>
+                                    <td class="text-muted">Règle</td>
+                                    <td>
+                                        <span class="text-info">{{ alert.rule.name }}</span>
+                                        <br>
+                                        <small class="text-muted">{{ alert.rule.description }}</small>
+                                    </td>
+                                </tr>
+                                {% endif %}
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Scores détaillés -->
+                    <div class="card bg-dark text-white border-secondary">
+                        <div class="card-header border-secondary">
+                            <h5 class="mb-0"><i class="fas fa-chart-pie me-2 text-info"></i>Scores de risque</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-6">
+                                    <div class="score-card">
+                                        <div class="score-value" style="color: var(--acra-cyan);">{{ alert.scores.ti }}</div>
+                                        <div class="score-label">Threat Intel</div>
+                                        <div class="progress score-progress">
+                                            <div class="progress-bar bg-info" style="width: {{ alert.scores.ti }}%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="score-card">
+                                        <div class="score-value" style="color: var(--acra-success);">{{ alert.scores.ml }}</div>
+                                        <div class="score-label">Machine Learning</div>
+                                        <div class="progress score-progress">
+                                            <div class="progress-bar bg-success" style="width: {{ alert.scores.ml }}%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="score-card">
+                                        <div class="score-value" style="color: var(--acra-warning);">{{ alert.scores.ueba }}</div>
+                                        <div class="score-label">UEBA</div>
+                                        <div class="progress score-progress">
+                                            <div class="progress-bar bg-warning" style="width: {{ alert.scores.ueba }}%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="score-card">
+                                        <div class="score-value" style="color: var(--acra-purple);">{{ alert.scores.context }}</div>
+                                        <div class="score-label">Contexte</div>
+                                        <div class="progress score-progress">
+                                            <div class="progress-bar bg-purple" style="background: var(--acra-purple); width: {{ alert.scores.context }}%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="text-center mt-3">
+                                <h4 class="mb-0">
+                                    Score final: 
+                                    <span class="badge bg-{{ 'danger' if alert.risk_score >= 80 else 'warning' if alert.risk_score >= 50 else 'info' if alert.risk_score >= 25 else 'success' }} fs-5">
+                                        {{ alert.risk_score }}
+                                    </span>
+                                </h4>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Colonne droite : Description et analyse -->
+                <div class="col-md-6">
+                    <!-- Description -->
+                    <div class="card bg-dark text-white border-secondary mb-4">
+                        <div class="card-header border-secondary">
+                            <h5 class="mb-0"><i class="fas fa-align-left me-2 text-info"></i>Description</h5>
+                        </div>
+                        <div class="card-body">
+                            <p class="text-white">{{ alert.description or 'Aucune description disponible' }}</p>
+                            
+                            {% if alert.analyst_comment %}
+                            <div class="mt-3 p-3" style="background: var(--acra-dark); border-radius: 6px;">
+                                <small class="text-muted">Commentaire analyste:</small>
+                                <p class="text-info mb-0">{{ alert.analyst_comment }}</p>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Analyse TI -->
+                    <div class="card bg-dark text-white border-secondary mb-4">
+                        <div class="card-header border-secondary">
+                            <h5 class="mb-0"><i class="fas fa-shield-alt me-2 text-info"></i>Analyse Threat Intelligence</h5>
+                        </div>
+                        <div class="card-body">
+                            {% if alert.raw_data.ti_data %}
+                                <table class="table table-dark table-borderless">
+                                    {% if alert.raw_data.ti_data.abuseipdb %}
+                                    <tr>
+                                        <td class="text-muted">AbuseIPDB</td>
+                                        <td>
+                                            <span class="badge bg-{{ 'danger' if alert.raw_data.ti_data.abuseipdb.abuseConfidenceScore > 50 else 'warning' }}">
+                                                {{ alert.raw_data.ti_data.abuseipdb.abuseConfidenceScore }}%
+                                            </span>
+                                            <small class="text-muted ms-2">
+                                                {{ alert.raw_data.ti_data.abuseipdb.totalReports }} reports
+                                            </small>
+                                        </td>
+                                    </tr>
+                                    {% endif %}
+                                    {% if alert.raw_data.ti_data.alienvault %}
+                                    <tr>
+                                        <td class="text-muted">AlienVault</td>
+                                        <td>
+                                            <span class="badge bg-info">
+                                                {{ alert.raw_data.ti_data.alienvault.pulse_count }} pulses
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    {% endif %}
+                                </table>
+                            {% else %}
+                                <p class="text-muted mb-0">Aucune donnée Threat Intelligence disponible</p>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Analyse UEBA -->
+                    <div class="card bg-dark text-white border-secondary">
+                        <div class="card-header border-secondary">
+                            <h5 class="mb-0"><i class="fas fa-chart-line me-2 text-info"></i>Analyse comportementale (UEBA)</h5>
+                        </div>
+                        <div class="card-body">
+                            {% if alert.raw_data.ueba_analysis %}
+                                {% for anomaly in alert.raw_data.ueba_analysis.anomalies %}
+                                <div class="mb-2">
+                                    <span class="risk-badge risk-{{ 'critical' if anomaly.score >= 80 else 'high' if anomaly.score >= 50 else 'medium' }}">
+                                        {{ anomaly.type|title }}
+                                    </span>
+                                    <small class="text-muted ms-2">{{ anomaly.description }}</small>
+                                </div>
+                                {% endfor %}
+                            {% else %}
+                                <p class="text-muted mb-0">Analyse comportementale non disponible</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Preuves -->
+        <div class="tab-pane fade" id="evidence" role="tabpanel">
+            <div class="card bg-dark text-white border-secondary">
+                <div class="card-header border-secondary d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-folder-open me-2 text-info"></i>Preuves collectées</h5>
+                    <button class="btn btn-sm btn-outline-info" onclick="downloadEvidence()">
+                        <i class="fas fa-download"></i> Télécharger
+                    </button>
+                </div>
+                <div class="card-body">
+                    {% if alert.evidence %}
+                        {% for evidence in alert.evidence %}
+                        <div class="evidence-item">
+                            <i class="fas fa-file-alt text-info me-2"></i>
+                            {{ evidence }}
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="text-muted text-center py-5">Aucune preuve disponible</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Timeline -->
+        <div class="tab-pane fade" id="timeline" role="tabpanel">
+            <div class="card bg-dark text-white border-secondary">
+                <div class="card-header border-secondary">
+                    <h5 class="mb-0"><i class="fas fa-clock me-2 text-info"></i>Timeline des événements</h5>
+                </div>
+                <div class="card-body">
+                    <div class="timeline">
+                        <div class="timeline-item">
+                            <div class="timeline-time">{{ alert.detected_at|datetime }}</div>
+                            <div class="timeline-title">Alerte détectée</div>
+                            <div class="timeline-description">Score: {{ alert.risk_score }} - {{ alert.category|replace('_', ' ')|title }}</div>
+                        </div>
+                        
+                        {% if alert.analyst_comment %}
+                        <div class="timeline-item">
+                            <div class="timeline-time">{{ alert.resolved_at|datetime if alert.resolved_at else 'En cours' }}</div>
+                            <div class="timeline-title">Commentaire analyste</div>
+                            <div class="timeline-description">{{ alert.analyst_comment }}</div>
+                        </div>
+                        {% endif %}
+                        
+                        {% if alert.resolved_at %}
+                        <div class="timeline-item">
+                            <div class="timeline-time">{{ alert.resolved_at|datetime }}</div>
+                            <div class="timeline-title">Alerte résolue</div>
+                            <div class="timeline-description">Statut final: {{ alert.status|replace('_', ' ')|title }}</div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Données brutes -->
+        <div class="tab-pane fade" id="raw" role="tabpanel">
+            <div class="card bg-dark text-white border-secondary">
+                <div class="card-header border-secondary d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-code me-2 text-info"></i>Données brutes (JSON)</h5>
+                    <button class="btn btn-sm btn-outline-info" onclick="copyRawData()">
+                        <i class="fas fa-copy"></i> Copier
+                    </button>
+                </div>
+                <div class="card-body">
+                    <pre class="json-viewer">{{ alert.raw_data|tojson(indent=2) }}</pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- Investigation -->
+        <div class="tab-pane fade" id="investigation" role="tabpanel">
+            <div class="card bg-dark text-white border-secondary">
+                <div class="card-header border-secondary d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-microscope me-2 text-info"></i>Investigation</h5>
+                    <button class="btn btn-sm btn-info" onclick="createInvestigation()">
+                        <i class="fas fa-plus"></i> Nouvelle investigation
+                    </button>
+                </div>
+                <div class="card-body">
+                    {% if alert.investigation %}
+                        <div class="mb-3">
+                            <h6 class="text-info">{{ alert.investigation.name }}</h6>
+                            <p class="text-muted">{{ alert.investigation.description }}</p>
+                            
+                            <table class="table table-dark table-borderless">
+                                <tr>
+                                    <td class="text-muted">Statut</td>
+                                    <td>
+                                        <span class="badge bg-{{ 'success' if alert.investigation.status == 'closed' else 'warning' }}">
+                                            {{ alert.investigation.status|title }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Analyste</td>
+                                    <td>{{ alert.investigation.analyst.username }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Créée le</td>
+                                    <td>{{ alert.investigation.created_at|datetime }}</td>
+                                </tr>
+                            </table>
+                            
+                            <button class="btn btn-outline-info w-100 mt-3" onclick="viewInvestigation({{ alert.investigation.id }})">
+                                <i class="fas fa-arrow-right me-2"></i>Voir l'investigation
+                            </button>
+                        </div>
+                    {% else %}
+                        <p class="text-muted text-center py-5">
+                            <i class="fas fa-search fa-3x mb-3"></i><br>
+                            Aucune investigation en cours
+                        </p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal pour changer le statut -->
+<div class="modal fade" id="statusModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Changer le statut de l'alerte</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <select class="filter-select w-100 mb-3" id="new-status">
+                    <option value="NEW">Nouveau</option>
+                    <option value="IN_PROGRESS">En cours</option>
+                    <option value="RESOLVED">Résolu</option>
+                    <option value="FALSE_POSITIVE">Faux positif</option>
+                </select>
+                <textarea class="filter-input w-100" id="status-comment" 
+                          placeholder="Commentaire (optionnel)" rows="3"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-info" onclick="saveStatus()">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentAlert = {{ alert.to_dict()|tojson }};
+
+// Fonctions d'action
+function refreshAlert() {
+    location.reload();
+}
+
+function editStatus() {
+    new bootstrap.Modal(document.getElementById('statusModal')).show();
+}
+
+function saveStatus() {
+    const status = document.getElementById('new-status').value;
+    const comment = document.getElementById('status-comment').value;
+    
+    fetch(`/api/alerts/{{ alert.id }}/status`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({status: status, comment: comment})
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            location.reload();
+        }
+    });
+}
+
+function startInvestigation() {
+    fetch(`/api/alerts/{{ alert.id }}/investigation`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            name: `Investigation - Alerte ${currentAlert.uuid.slice(0,8)}`,
+            description: `Investigation sur l'alerte ${currentAlert.uuid}`
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            location.reload();
+        }
+    });
+}
+
+function searchIP(ip) {
+    window.location.href = `/alerts/list?search=${ip}`;
+}
+
+function copyRawData() {
+    const rawData = {{ alert.raw_data|tojson }};
+    navigator.clipboard.writeText(JSON.stringify(rawData, null, 2));
+    alert('Données brutes copiées dans le presse-papier');
+}
+
+function downloadEvidence() {
+    const evidence = {{ alert.evidence|tojson }};
+    const blob = new Blob([evidence.join('\n')], {type: 'text/plain'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `evidence-{{ alert.uuid[:8] }}.txt`;
+    a.click();
+}
+
+function createInvestigation() {
+    startInvestigation();
+}
+
+function viewInvestigation(id) {
+    window.location.href = `/investigations/${id}`;
+}
+</script>
+{% endblock %}

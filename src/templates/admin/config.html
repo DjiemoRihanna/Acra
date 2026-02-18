@@ -1,0 +1,1010 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Configuration Système - ACRA SOC{% endblock %}
+
+{% block content %}
+<style>
+    /* Style Cyber SOC pour la configuration */
+    :root {
+        --acra-cyan: #00bcd4;
+        --acra-dark: #0a0c0e;
+        --acra-darker: #050607;
+        --acra-card: #1a1c1e;
+        --acra-border: #2a2c2e;
+        --acra-success: #2ecc71;
+        --acra-warning: #f39c12;
+        --acra-danger: #e74c3c;
+        --acra-info: #3498db;
+        --acra-purple: #9b59b6;
+    }
+
+    body {
+        background-color: var(--acra-darker);
+        font-family: 'Inter', 'Segoe UI', sans-serif;
+    }
+
+    /* En-tête */
+    .config-header {
+        background: var(--acra-card);
+        border: 1px solid var(--acra-border);
+        border-radius: 12px;
+        padding: 20px 30px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Navigation des onglets */
+    .config-tabs {
+        display: flex;
+        gap: 5px;
+        border-bottom: 1px solid var(--acra-border);
+        margin-bottom: 25px;
+    }
+
+    .config-tab {
+        padding: 12px 25px;
+        background: var(--acra-dark);
+        border: 1px solid var(--acra-border);
+        border-bottom: none;
+        border-radius: 8px 8px 0 0;
+        color: #888;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-weight: 500;
+    }
+
+    .config-tab:hover {
+        color: var(--acra-cyan);
+        border-color: var(--acra-cyan);
+    }
+
+    .config-tab.active {
+        background: var(--acra-card);
+        color: var(--acra-cyan);
+        border-color: var(--acra-border) var(--acra-border) var(--acra-card);
+        margin-bottom: -1px;
+    }
+
+    /* Cartes de configuration */
+    .config-card {
+        background: var(--acra-card);
+        border: 1px solid var(--acra-border);
+        border-radius: 12px;
+        padding: 25px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    }
+
+    .config-card h4 {
+        color: white;
+        margin: 0 0 20px 0;
+        font-size: 1.1rem;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding-bottom: 15px;
+        border-bottom: 1px solid var(--acra-border);
+    }
+
+    .config-card h4 i {
+        color: var(--acra-cyan);
+    }
+
+    /* Grille de configuration */
+    .config-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 20px;
+    }
+
+    .config-item {
+        margin-bottom: 15px;
+    }
+
+    .config-item label {
+        display: block;
+        color: #888;
+        font-size: 0.85rem;
+        margin-bottom: 5px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .config-item .value {
+        color: white;
+        font-size: 1.1rem;
+        font-weight: 500;
+    }
+
+    .config-item .description {
+        color: #666;
+        font-size: 0.8rem;
+        margin-top: 3px;
+    }
+
+    /* Inputs */
+    .config-input {
+        width: 100%;
+        background: var(--acra-dark);
+        border: 1px solid var(--acra-border);
+        color: white;
+        padding: 10px 15px;
+        border-radius: 6px;
+        font-size: 0.95rem;
+        transition: all 0.2s;
+    }
+
+    .config-input:focus {
+        outline: none;
+        border-color: var(--acra-cyan);
+    }
+
+    .config-input[type="number"] {
+        width: 120px;
+    }
+
+    .config-select {
+        width: 100%;
+        background: var(--acra-dark);
+        border: 1px solid var(--acra-border);
+        color: white;
+        padding: 10px 15px;
+        border-radius: 6px;
+        font-size: 0.95rem;
+        cursor: pointer;
+    }
+
+    /* Toggles */
+    .toggle-switch {
+        position: relative;
+        display: inline-block;
+        width: 60px;
+        height: 30px;
+    }
+
+    .toggle-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+
+    .toggle-slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: var(--acra-dark);
+        border: 1px solid var(--acra-border);
+        transition: .4s;
+        border-radius: 30px;
+    }
+
+    .toggle-slider:before {
+        position: absolute;
+        content: "";
+        height: 24px;
+        width: 24px;
+        left: 3px;
+        bottom: 2px;
+        background-color: #888;
+        transition: .4s;
+        border-radius: 50%;
+    }
+
+    input:checked + .toggle-slider {
+        background-color: var(--acra-cyan);
+        border-color: var(--acra-cyan);
+    }
+
+    input:checked + .toggle-slider:before {
+        transform: translateX(28px);
+        background-color: white;
+    }
+
+    /* Badges */
+    .badge-active {
+        background: var(--acra-success);
+        color: black;
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 0.7rem;
+        font-weight: 600;
+    }
+
+    .badge-inactive {
+        background: #7f8c8d;
+        color: white;
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 0.7rem;
+        font-weight: 600;
+    }
+
+    /* Boutons */
+    .btn-save {
+        background: var(--acra-cyan);
+        color: black;
+        border: none;
+        padding: 12px 30px;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 0.95rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .btn-save:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(0, 188, 212, 0.3);
+    }
+
+    .btn-test {
+        background: transparent;
+        color: var(--acra-info);
+        border: 1px solid var(--acra-info);
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        margin-left: 10px;
+    }
+
+    .btn-test:hover {
+        background: var(--acra-info);
+        color: black;
+    }
+
+    /* Tableau des règles */
+    .rules-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 15px;
+    }
+
+    .rules-table th {
+        text-align: left;
+        padding: 12px 10px;
+        color: #888;
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        border-bottom: 1px solid var(--acra-border);
+    }
+
+    .rules-table td {
+        padding: 12px 10px;
+        border-bottom: 1px solid var(--acra-border);
+        color: #ccc;
+    }
+
+    .priority-high {
+        color: var(--acra-danger);
+        font-weight: 600;
+    }
+
+    .priority-medium {
+        color: var(--acra-warning);
+    }
+
+    .priority-low {
+        color: var(--acra-success);
+    }
+
+    /* Statistiques */
+    .stats-mini {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 15px;
+        margin-bottom: 25px;
+    }
+
+    .stat-mini-card {
+        background: var(--acra-dark);
+        border: 1px solid var(--acra-border);
+        border-radius: 8px;
+        padding: 15px;
+        text-align: center;
+    }
+
+    .stat-mini-value {
+        color: var(--acra-cyan);
+        font-size: 1.8rem;
+        font-weight: 700;
+        line-height: 1;
+    }
+
+    .stat-mini-label {
+        color: #888;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        margin-top: 5px;
+    }
+</style>
+
+<div class="container-fluid px-4">
+    <!-- En-tête -->
+    <div class="config-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h4 class="text-white mb-2">
+                    <i class="fas fa-cog text-info me-2"></i>
+                    Configuration Système
+                </h4>
+                <p class="text-muted mb-0">
+                    UC16-17 - Configuration des règles et des poids de score
+                </p>
+            </div>
+            <div>
+                <span class="badge-active me-2">
+                    <i class="fas fa-shield-alt me-1"></i>Mode Production
+                </span>
+                <span class="badge-inactive">
+                    <i class="fas fa-sync-alt me-1"></i>Version 2.0
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Onglets de configuration -->
+    <div class="config-tabs">
+        <div class="config-tab active" data-tab="scoring">
+            <i class="fas fa-calculator me-2"></i>Scoring
+        </div>
+        <div class="config-tab" data-tab="ml">
+            <i class="fas fa-brain me-2"></i>Machine Learning
+        </div>
+        <div class="config-tab" data-tab="ti">
+            <i class="fas fa-shield-alt me-2"></i>Threat Intelligence
+        </div>
+        <div class="config-tab" data-tab="rules">
+            <i class="fas fa-gavel me-2"></i>Règles de détection
+        </div>
+        <div class="config-tab" data-tab="thresholds">
+            <i class="fas fa-chart-line me-2"></i>Seuils
+        </div>
+    </div>
+
+    <!-- Contenu des onglets -->
+    <div id="tab-content">
+        <!-- Onglet Scoring -->
+        <div class="tab-pane active" id="tab-scoring">
+            <div class="config-card">
+                <h4><i class="fas fa-calculator"></i>Poids des composantes (5.2)</h4>
+                <div class="config-grid">
+                    <div class="config-item">
+                        <label>Machine Learning (IA)</label>
+                        <input type="number" class="config-input" id="weight-ml" value="40" min="0" max="100" step="5">
+                        <div class="description">Poids actuel: 40% (conforme CDC)</div>
+                    </div>
+                    <div class="config-item">
+                        <label>UEBA (Comportement)</label>
+                        <input type="number" class="config-input" id="weight-ueba" value="30" min="0" max="100" step="5">
+                        <div class="description">Poids actuel: 30% (conforme CDC)</div>
+                    </div>
+                    <div class="config-item">
+                        <label>Threat Intelligence</label>
+                        <input type="number" class="config-input" id="weight-ti" value="20" min="0" max="100" step="5">
+                        <div class="description">Poids actuel: 20% (conforme CDC)</div>
+                    </div>
+                    <div class="config-item">
+                        <label>Contexte</label>
+                        <input type="number" class="config-input" id="weight-context" value="10" min="0" max="100" step="5">
+                        <div class="description">Poids actuel: 10% (conforme CDC)</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="config-card">
+                <h4><i class="fas fa-bolt"></i>Coupe-circuit (5.1)</h4>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="config-item">
+                            <label>Seuil TI critique</label>
+                            <input type="number" class="config-input" id="ti-threshold" value="80" min="0" max="100">
+                            <div class="description">Score TI ≥ ce seuil → score forcé à 100</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="config-item">
+                            <label>Priorité signatures critiques</label>
+                            <input type="number" class="config-input" id="signature-priority" value="10" min="1" max="10">
+                            <div class="description">Règles avec priorité ≥ ce seuil → coupe-circuit</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <label class="d-flex align-items-center">
+                        <div class="toggle-switch me-3">
+                            <input type="checkbox" id="circuit-breaker-enabled" checked>
+                            <span class="toggle-slider"></span>
+                        </div>
+                        <span class="text-white">Activer le coupe-circuit</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="config-card">
+                <h4><i class="fas fa-exclamation-triangle"></i>Seuils de sévérité</h4>
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="config-item">
+                            <label>P1 - Critique</label>
+                            <input type="number" class="config-input" id="threshold-p1" value="80" min="0" max="100">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="config-item">
+                            <label>P2 - Haute</label>
+                            <input type="number" class="config-input" id="threshold-p2" value="50" min="0" max="100">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="config-item">
+                            <label>P3 - Moyenne</label>
+                            <input type="number" class="config-input" id="threshold-p3" value="25" min="0" max="100">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="config-item">
+                            <label>P4 - Basse</label>
+                            <input type="number" class="config-input" id="threshold-p4" value="10" min="0" max="100">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Onglet Machine Learning -->
+        <div class="tab-pane" id="tab-ml" style="display: none;">
+            <div class="stats-mini">
+                <div class="stat-mini-card">
+                    <div class="stat-mini-value" id="ml-samples">0</div>
+                    <div class="stat-mini-label">Échantillons</div>
+                </div>
+                <div class="stat-mini-card">
+                    <div class="stat-mini-value" id="ml-accuracy">0%</div>
+                    <div class="stat-mini-label">Précision</div>
+                </div>
+                <div class="stat-mini-card">
+                    <div class="stat-mini-value" id="ml-models">0</div>
+                    <div class="stat-mini-label">Modèles</div>
+                </div>
+            </div>
+
+            <div class="config-card">
+                <h4><i class="fas fa-brain"></i>Configuration ML</h4>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="config-item">
+                            <label>Intervalle de ré-entraînement</label>
+                            <input type="number" class="config-input" id="retrain-interval" value="3600" min="300" step="300">
+                            <div class="description">secondes (actuel: 3600s = 1h)</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="config-item">
+                            <label>Échantillons minimum</label>
+                            <input type="number" class="config-input" id="min-samples" value="1000" min="100">
+                            <div class="description">minimum pour entraîner</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <div class="config-item">
+                            <label>Modèle Isolation Forest</label>
+                            <div class="d-flex align-items-center">
+                                <span class="badge-active me-2" id="if-status">Actif</span>
+                                <button class="btn-test" onclick="retrainModel('isolation_forest')">
+                                    <i class="fas fa-sync-alt me-1"></i>Ré-entraîner
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="config-item">
+                            <label>Modèle Random Forest</label>
+                            <div class="d-flex align-items-center">
+                                <span class="badge-inactive" id="rf-status">Inactif</span>
+                                <button class="btn-test" onclick="retrainModel('random_forest')">
+                                    <i class="fas fa-sync-alt me-1"></i>Ré-entraîner
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="config-card">
+                <h4><i class="fas fa-history"></i>Version des modèles</h4>
+                <table class="rules-table">
+                    <thead>
+                        <tr>
+                            <th>Modèle</th>
+                            <th>Version</th>
+                            <th>Date</th>
+                            <th>Précision</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="models-table-body">
+                        <tr>
+                            <td colspan="5" class="text-center py-4">
+                                <div class="text-muted">
+                                    <i class="fas fa-spinner fa-spin me-2"></i>Chargement...
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Onglet Threat Intelligence -->
+        <div class="tab-pane" id="tab-ti" style="display: none;">
+            <div class="config-card">
+                <h4><i class="fas fa-shield-alt"></i>Clés API Threat Intelligence</h4>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="config-item">
+                            <label>AbuseIPDB API Key</label>
+                            <input type="password" class="config-input" id="abuseipdb-key" placeholder="Entrez votre clé API">
+                            <div class="description">
+                                <i class="fas fa-info-circle me-1"></i>
+                                Obtenez une clé sur <a href="https://www.abuseipdb.com/" target="_blank" class="text-info">AbuseIPDB</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="config-item">
+                            <label>AlienVault OTX API Key</label>
+                            <input type="password" class="config-input" id="alienvault-key" placeholder="Entrez votre clé API">
+                            <div class="description">
+                                <i class="fas fa-info-circle me-1"></i>
+                                Obtenez une clé sur <a href="https://otx.alienvault.com/" target="_blank" class="text-info">AlienVault</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-4">
+                        <button class="btn-test" onclick="testTiConnection('abuseipdb')">
+                            <i class="fas fa-plug me-1"></i>Tester AbuseIPDB
+                        </button>
+                    </div>
+                    <div class="col-md-4">
+                        <button class="btn-test" onclick="testTiConnection('alienvault')">
+                            <i class="fas fa-plug me-1"></i>Tester AlienVault
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="config-card">
+                <h4><i class="fas fa-clock"></i>Cache TI</h4>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="config-item">
+                            <label>Durée de cache (secondes)</label>
+                            <input type="number" class="config-input" id="ti-cache-ttl" value="3600" min="60" step="60">
+                            <div class="description">actuel: 3600s (1 heure)</div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="config-item">
+                            <label>Taille du cache</label>
+                            <span class="value" id="ti-cache-size">1,234 entrées</span>
+                            <button class="btn-test ms-2" onclick="clearTiCache()">
+                                <i class="fas fa-trash me-1"></i>Vider
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Onglet Règles de détection -->
+        <div class="tab-pane" id="tab-rules" style="display: none;">
+            <div class="config-card">
+                <h4><i class="fas fa-gavel"></i>Règles de détection</h4>
+                <div class="mb-3">
+                    <button class="btn-save" onclick="addRule()">
+                        <i class="fas fa-plus"></i>Nouvelle règle
+                    </button>
+                </div>
+                <table class="rules-table">
+                    <thead>
+                        <tr>
+                            <th>Nom</th>
+                            <th>Type</th>
+                            <th>Priorité</th>
+                            <th>Sévérité</th>
+                            <th>Statut</th>
+                            <th>Matchs</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rules-table-body">
+                        <tr>
+                            <td colspan="7" class="text-center py-4">
+                                <div class="text-muted">
+                                    <i class="fas fa-spinner fa-spin me-2"></i>Chargement...
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Onglet Seuils -->
+        <div class="tab-pane" id="tab-thresholds" style="display: none;">
+            <div class="config-card">
+                <h4><i class="fas fa-chart-line"></i>Seuils de détection UEBA</h4>
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="config-item">
+                            <label>Critique (5σ)</label>
+                            <input type="number" class="config-input" id="threshold-critical" value="5.0" min="1.0" max="10.0" step="0.5">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="config-item">
+                            <label>Haute (3σ)</label>
+                            <input type="number" class="config-input" id="threshold-high" value="3.0" min="1.0" max="10.0" step="0.5">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="config-item">
+                            <label>Moyenne (2σ)</label>
+                            <input type="number" class="config-input" id="threshold-medium" value="2.0" min="1.0" max="10.0" step="0.5">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="config-item">
+                            <label>Basse (1.5σ)</label>
+                            <input type="number" class="config-input" id="threshold-low" value="1.5" min="1.0" max="10.0" step="0.5">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="config-card">
+                <h4><i class="fas fa-clock"></i>Fenêtres de corrélation</h4>
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="config-item">
+                            <label>Courte (s)</label>
+                            <input type="number" class="config-input" id="window-short" value="60">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="config-item">
+                            <label>Moyenne (s)</label>
+                            <input type="number" class="config-input" id="window-medium" value="300">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="config-item">
+                            <label>Longue (s)</label>
+                            <input type="number" class="config-input" id="window-long" value="3600">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="config-item">
+                            <label>Jour (s)</label>
+                            <input type="number" class="config-input" id="window-day" value="86400">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Boutons de sauvegarde -->
+    <div class="config-card mt-4">
+        <div class="d-flex justify-content-end gap-3">
+            <button class="btn-save" onclick="saveConfiguration()">
+                <i class="fas fa-save"></i>Sauvegarder la configuration
+            </button>
+            <button class="btn-test" onclick="resetConfiguration()">
+                <i class="fas fa-undo"></i>Réinitialiser
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+// Navigation par onglets
+document.querySelectorAll('.config-tab').forEach(tab => {
+    tab.addEventListener('click', function() {
+        // Retirer la classe active de tous les onglets
+        document.querySelectorAll('.config-tab').forEach(t => t.classList.remove('active'));
+        // Ajouter la classe active à l'onglet cliqué
+        this.classList.add('active');
+        
+        // Cacher tous les panneaux
+        document.querySelectorAll('.tab-pane').forEach(pane => pane.style.display = 'none');
+        // Afficher le panneau correspondant
+        const tabName = this.dataset.tab;
+        document.getElementById(`tab-${tabName}`).style.display = 'block';
+    });
+});
+
+// Charger la configuration au démarrage
+document.addEventListener('DOMContentLoaded', function() {
+    loadConfiguration();
+    loadMLStats();
+    loadRules();
+    loadModels();
+});
+
+function loadConfiguration() {
+    fetch('/api/admin/config')
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                // Remplir les champs avec les valeurs de la config
+                document.getElementById('weight-ml').value = data.config.weights?.ml || 40;
+                document.getElementById('weight-ueba').value = data.config.weights?.ueba || 30;
+                document.getElementById('weight-ti').value = data.config.weights?.ti || 20;
+                document.getElementById('weight-context').value = data.config.weights?.context || 10;
+                
+                document.getElementById('ti-threshold').value = data.config.circuit_breaker?.ti_threshold || 80;
+                document.getElementById('signature-priority').value = data.config.circuit_breaker?.signature_priority || 10;
+                document.getElementById('circuit-breaker-enabled').checked = data.config.circuit_breaker?.enabled !== false;
+                
+                document.getElementById('threshold-p1').value = data.config.severity?.p1 || 80;
+                document.getElementById('threshold-p2').value = data.config.severity?.p2 || 50;
+                document.getElementById('threshold-p3').value = data.config.severity?.p3 || 25;
+                document.getElementById('threshold-p4').value = data.config.severity?.p4 || 10;
+                
+                document.getElementById('abuseipdb-key').value = data.config.ti?.abuseipdb_key || '';
+                document.getElementById('alienvault-key').value = data.config.ti?.alienvault_key || '';
+                document.getElementById('ti-cache-ttl').value = data.config.ti?.cache_ttl || 3600;
+                document.getElementById('ti-cache-size').textContent = data.config.ti?.cache_size || '0 entrées';
+                
+                document.getElementById('retrain-interval').value = data.config.ml?.retrain_interval || 3600;
+                document.getElementById('min-samples').value = data.config.ml?.min_samples || 1000;
+            }
+        });
+}
+
+function loadMLStats() {
+    fetch('/api/ml/stats')
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                document.getElementById('ml-samples').textContent = data.stats.samples || 0;
+                document.getElementById('ml-accuracy').textContent = (data.stats.accuracy * 100).toFixed(1) + '%';
+                document.getElementById('ml-models').textContent = data.stats.models || 0;
+                
+                document.getElementById('if-status').textContent = data.stats.isolation_forest ? 'Actif' : 'Inactif';
+                document.getElementById('if-status').className = data.stats.isolation_forest ? 'badge-active' : 'badge-inactive';
+                
+                document.getElementById('rf-status').textContent = data.stats.random_forest ? 'Actif' : 'Inactif';
+                document.getElementById('rf-status').className = data.stats.random_forest ? 'badge-active' : 'badge-inactive';
+            }
+        });
+}
+
+function loadRules() {
+    fetch('/api/detection/rules')
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                const tbody = document.getElementById('rules-table-body');
+                if (data.rules.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="7" class="text-center py-4">
+                                <div class="text-muted">Aucune règle configurée</div>
+                            </td>
+                        </tr>
+                    `;
+                } else {
+                    tbody.innerHTML = data.rules.map(rule => `
+                        <tr>
+                            <td>${rule.name}</td>
+                            <td>${rule.rule_type}</td>
+                            <td class="${rule.priority >= 8 ? 'priority-high' : rule.priority >= 5 ? 'priority-medium' : 'priority-low'}">
+                                ${rule.priority}
+                            </td>
+                            <td>${rule.severity}</td>
+                            <td>
+                                <span class="${rule.is_enabled ? 'badge-active' : 'badge-inactive'}">
+                                    ${rule.is_enabled ? 'Actif' : 'Inactif'}
+                                </span>
+                            </td>
+                            <td>${rule.times_matched || 0}</td>
+                            <td>
+                                <button class="btn-test btn-sm" onclick="editRule(${rule.id})">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button class="btn-test btn-sm" onclick="toggleRule(${rule.id})">
+                                    <i class="fas ${rule.is_enabled ? 'fa-pause' : 'fa-play'}"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `).join('');
+                }
+            }
+        });
+}
+
+function loadModels() {
+    fetch('/api/ml/models')
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                const tbody = document.getElementById('models-table-body');
+                if (data.models.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="5" class="text-center py-4">
+                                <div class="text-muted">Aucun modèle entraîné</div>
+                            </td>
+                        </tr>
+                    `;
+                } else {
+                    tbody.innerHTML = data.models.map(model => `
+                        <tr>
+                            <td>${model.type}</td>
+                            <td>v${model.version}</td>
+                            <td>${new Date(model.timestamp).toLocaleString()}</td>
+                            <td>${model.accuracy ? (model.accuracy * 100).toFixed(1) + '%' : 'N/A'}</td>
+                            <td>
+                                <button class="btn-test btn-sm" onclick="useModel('${model.type}', '${model.version}')">
+                                    <i class="fas fa-check"></i>Utiliser
+                                </button>
+                            </td>
+                        </tr>
+                    `).join('');
+                }
+            }
+        });
+}
+
+function saveConfiguration() {
+    const config = {
+        weights: {
+            ml: parseInt(document.getElementById('weight-ml').value),
+            ueba: parseInt(document.getElementById('weight-ueba').value),
+            ti: parseInt(document.getElementById('weight-ti').value),
+            context: parseInt(document.getElementById('weight-context').value)
+        },
+        circuit_breaker: {
+            ti_threshold: parseInt(document.getElementById('ti-threshold').value),
+            signature_priority: parseInt(document.getElementById('signature-priority').value),
+            enabled: document.getElementById('circuit-breaker-enabled').checked
+        },
+        severity: {
+            p1: parseInt(document.getElementById('threshold-p1').value),
+            p2: parseInt(document.getElementById('threshold-p2').value),
+            p3: parseInt(document.getElementById('threshold-p3').value),
+            p4: parseInt(document.getElementById('threshold-p4').value)
+        },
+        ti: {
+            abuseipdb_key: document.getElementById('abuseipdb-key').value,
+            alienvault_key: document.getElementById('alienvault-key').value,
+            cache_ttl: parseInt(document.getElementById('ti-cache-ttl').value)
+        },
+        ml: {
+            retrain_interval: parseInt(document.getElementById('retrain-interval').value),
+            min_samples: parseInt(document.getElementById('min-samples').value)
+        },
+        thresholds: {
+            critical: parseFloat(document.getElementById('threshold-critical').value),
+            high: parseFloat(document.getElementById('threshold-high').value),
+            medium: parseFloat(document.getElementById('threshold-medium').value),
+            low: parseFloat(document.getElementById('threshold-low').value)
+        },
+        windows: {
+            short: parseInt(document.getElementById('window-short').value),
+            medium: parseInt(document.getElementById('window-medium').value),
+            long: parseInt(document.getElementById('window-long').value),
+            day: parseInt(document.getElementById('window-day').value)
+        }
+    };
+    
+    fetch('/api/admin/config', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(config)
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert('Configuration sauvegardée avec succès');
+        } else {
+            alert('Erreur: ' + data.message);
+        }
+    });
+}
+
+function testTiConnection(provider) {
+    const key = provider === 'abuseipdb' 
+        ? document.getElementById('abuseipdb-key').value 
+        : document.getElementById('alienvault-key').value;
+    
+    fetch('/api/admin/test-ti', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({provider, key})
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert(`Connexion à ${provider} réussie!`);
+        } else {
+            alert(`Erreur: ${data.message}`);
+        }
+    });
+}
+
+function retrainModel(model_type) {
+    fetch('/api/ml/retrain', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({model_type})
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert(`Entraînement du modèle ${model_type} démarré`);
+            setTimeout(loadMLStats, 5000);
+        }
+    });
+}
+
+function clearTiCache() {
+    if (confirm('Vider le cache Threat Intelligence ?')) {
+        fetch('/api/admin/clear-ti-cache', {method: 'POST'})
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    alert('Cache vidé');
+                    document.getElementById('ti-cache-size').textContent = '0 entrées';
+                }
+            });
+    }
+}
+
+function resetConfiguration() {
+    if (confirm('Réinitialiser la configuration par défaut ?')) {
+        loadConfiguration(); // Recharge depuis le serveur
+    }
+}
+
+function addRule() {
+    alert('Fonctionnalité à implémenter: Ajout de règle');
+}
+
+function editRule(id) {
+    alert('Fonctionnalité à implémenter: Édition règle ' + id);
+}
+
+function toggleRule(id) {
+    fetch(`/api/detection/rules/${id}/toggle`, {method: 'POST'})
+        .then(() => loadRules());
+}
+
+function useModel(type, version) {
+    fetch('/api/ml/use-model', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({type, version})
+    })
+    .then(() => {
+        alert(`Modèle ${type} v${version} activé`);
+        loadMLStats();
+    });
+}
+</script>
+{% endblock %}

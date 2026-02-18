@@ -567,3 +567,4 @@ def index():
     if current_user.is_authenticated:
         return redirect(url_for('auth.dashboard'))
     return redirect(url_for('auth.login'))
+

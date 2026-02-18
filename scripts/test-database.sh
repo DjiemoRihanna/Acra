@@ -1,60 +1,54 @@
+cat > scripts/test-database.sh << 'EOF'
 #!/bin/bash
-# test-database.sh
-# Teste la connexion et la structure de la base de données
+# Script de test de connexion à la base de données
+# Ce script se rend automatiquement exécutable
 
-set -e
+# Si le script n'est pas exécutable, on le rend exécutable et on le relance
+if [ ! -x "$0" ]; then
+    echo "🔧 Configuration des permissions..."
+    chmod +x "$0"
+    exec "$0" "$@"
+fi
 
-echo "🧪 Test de la base de données ACRA..."
+# Couleurs
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
 
-# Vérifier que Docker est en cours
-if ! docker-compose ps | grep -q "acra-postgres"; then
-    echo "❌ PostgreSQL n'est pas démarré"
-    echo "💡 Lancez: docker-compose up -d postgres"
+echo -e "${BLUE}========================================${NC}"
+echo -e "${GREEN}🗄️  TEST BASE DE DONNÉES ACRA${NC}"
+echo -e "${BLUE}========================================${NC}"
+
+# Vérifier que le conteneur postgres tourne
+if ! docker ps | grep -q acra-postgres; then
+    echo -e "${RED}❌ Conteneur acra-postgres non trouvé${NC}"
     exit 1
 fi
 
-# Test de connexion
-echo "1. Test de connexion à PostgreSQL..."
-if docker-compose exec -T postgres pg_isready -U acra_admin; then
-    echo "✅ PostgreSQL est accessible"
+# Tester la connexion
+echo -e "${YELLOW}📡 Test de connexion...${NC}"
+if docker exec acra-postgres pg_isready -U acra_admin -d acra >/dev/null 2>&1; then
+    echo -e "${GREEN}✅ Connexion réussie${NC}"
 else
-    echo "❌ Impossible de se connecter à PostgreSQL"
+    echo -e "${RED}❌ Connexion échouée${NC}"
     exit 1
 fi
 
-# Vérifier que la base existe
-echo "2. Vérification de la base 'acra'..."
-if docker-compose exec -T postgres psql -U acra_admin -d acra -c "\q" 2>/dev/null; then
-    echo "✅ Base 'acra' existe"
+# Lister les tables
+echo -e "${YELLOW}📋 Tables dans la base:${NC}"
+TABLES=$(docker exec acra-postgres psql -U acra_admin -d acra -t -c "SELECT tablename FROM pg_tables WHERE schemaname='public';")
+if [ -z "$TABLES" ]; then
+    echo -e "${RED}  Aucune table trouvée${NC}"
 else
-    echo "❌ Base 'acra' n'existe pas"
-    echo "💡 Réinitialisez: docker-compose down -v && docker-compose up -d postgres"
-    exit 1
+    echo "$TABLES" | while read table; do
+        if [ ! -z "$table" ]; then
+            COUNT=$(docker exec acra-postgres psql -U acra_admin -d acra -t -c "SELECT COUNT(*) FROM $table;" | tr -d ' ')
+            echo -e "${GREEN}  ✅ $table: $COUNT enregistrements${NC}"
+        fi
+    done
 fi
 
-# Vérifier les tables
-echo "3. Vérification des tables..."
-docker-compose exec -T postgres psql -U acra_admin -d acra -c "
-    SELECT 
-        table_name,
-        (SELECT COUNT(*) FROM acra.\"\${table_name}\") as row_count
-    FROM information_schema.tables 
-    WHERE table_schema = 'acra' 
-    ORDER BY table_name;
-"
-
-# Test des données admin
-echo "4. Vérification de l'utilisateur admin..."
-docker-compose exec -T postgres psql -U acra_admin -d acra -c "
-    SELECT 
-        email, 
-        role, 
-        is_active,
-        created_at::date
-    FROM acra.users 
-    WHERE email = 'admin@acra.local';
-"
-
-echo ""
-echo "🎉 Tests de base de données terminés avec succès!"
-echo "📊 Pour explorer la BD: docker-compose exec postgres psql -U acra_admin -d acra"
+echo -e "${BLUE}========================================${NC}"
+EOF

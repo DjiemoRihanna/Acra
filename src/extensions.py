@@ -1,35 +1,33 @@
 """
-Centralisation de toutes les extensions Flask
-Initialisées ici pour éviter les imports circulaires
+Extensions Flask centralisées
 """
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from flask_wtf import CSRFProtect
+from flask_wtf.csrf import CSRFProtect
 from flask_apscheduler import APScheduler
 from flask_mail import Mail
 from flask_bcrypt import Bcrypt
+from flask_socketio import SocketIO
 
-# Base de données
+# Initialisation des extensions
 db = SQLAlchemy()
-
-# Gestion d'authentification
 login_manager = LoginManager()
-
-# Limiteur de requêtes (initialisé sans app d'abord)
-limiter = Limiter(key_func=get_remote_address, default_limits=["200 per day", "50 per hour"])
-
-# Protection CSRF
+limiter = Limiter(key_func=get_remote_address)
 csrf = CSRFProtect()
-
-# Scheduler pour tâches planifiées
 scheduler = APScheduler()
-
-# Email
 mail = Mail()
-
-# Hashage de mots de passe
 bcrypt = Bcrypt()
+socketio = SocketIO()
 
-# Note: L'initialisation complète se fera dans app.py avec init_app(app)f
+__all__ = [
+    'db', 
+    'login_manager', 
+    'limiter', 
+    'csrf', 
+    'scheduler', 
+    'mail', 
+    'bcrypt',
+    'socketio'
+]

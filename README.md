@@ -60,6 +60,7 @@ acra/                                  # RACINE DU PROJET
 │   ├── 📄 Dockerfile.zeek           # Image Zeek avec scripts custom
 │   ├── 📄 Dockerfile.suricata       # Image Suricata pour signatures
 │   ├── 📄 Dockerfile.postgres       # Image PostgreSQL optimisée
+│   ├── 📄 Dockerfile.ml
 │   ├── 📄 Dockerfile.redis          # Image Redis
 │   │
 │   └── 📁 config/                   # Configurations spécifiques

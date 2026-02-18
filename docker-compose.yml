@@ -36,38 +36,41 @@ services:
     command: ["/bin/sh", "/zeek_entrypoint.sh"]
 
   web:
-      build:
-        context: .
-        dockerfile: docker/Dockerfile.web
-      container_name: acra-web
-      network_mode: "host"
-      depends_on:
-        postgres:
-          condition: service_healthy
-      volumes:
-        - .:/app
-        - ./data/zeek_logs:/app/data/zeek_logs:ro
-        - ./backups/audit_logs:/app/exports
-      environment:
-            - PYTHONPATH=/app
-            - DATABASE_URL=postgresql://acra_admin:changeme123@localhost:5432/acra
-            - REDIS_URL=redis://localhost:6379/0
-            # --- CONFIGURATION GMAIL RÉELLE ---
-            - MAIL_SERVER=smtp.gmail.com
-            - MAIL_PORT=587
-            - MAIL_USERNAME=acranoreply@gmail.com    
-            - MAIL_PASSWORD=ftgn avso qpfg ewbl      
-            - MAIL_USE_TLS=True
-            - MAIL_DEFAULT_SENDER=acranoreply@gmail.com
-            # ----------------------------------
-            - PYTHONUNBUFFERED=1 
-            - PYTHONWARNINGS=ignore::DeprecationWarning
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    network_mode: "host"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - .:/app
+      - ./data/zeek_logs:/app/data/zeek_logs:ro
+      - ./backups/audit_logs:/app/exports
+    environment:
+      - PYTHONPATH=/app
+      - DATABASE_URL=postgresql://acra_admin:changeme123@localhost:5432/acra
+      - REDIS_URL=redis://localhost:6379/0
+      # --- CONFIGURATION GMAIL RÉELLE ---
+      - MAIL_SERVER=smtp.gmail.com
+      - MAIL_PORT=587
+      - MAIL_USERNAME=acranoreply@gmail.com    
+      - MAIL_PASSWORD=ftgn avso qpfg ewbl      
+      - MAIL_USE_TLS=True
+      - MAIL_DEFAULT_SENDER=acranoreply@gmail.com
+      # ----------------------------------
+      - PYTHONUNBUFFERED=1 
+      - PYTHONWARNINGS=ignore::DeprecationWarning
+      - DISABLE_NETWORK_INGESTION=true  # Empêche le web de faire aussi la capture
+    ports:
+      - "5000:5000"
 
   zeek-streamer:
       build:
         context: .
         dockerfile: docker/Dockerfile.web
-      container_name: acra-streamer
       network_mode: "host"
       # L'astuce est ici : on crée les fichiers et on donne les droits avant de lancer le script
       command: >
@@ -89,3 +92,106 @@ services:
         - DATABASE_URL=postgresql://acra_admin:changeme123@localhost:5432/acra
         - PYTHONUNBUFFERED=1
       restart: always
+
+  scapy-capture:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    network_mode: "host"
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+      - SYS_ADMIN
+    command: >
+      /bin/sh -c "
+      python -u src/ingestion/packet_capture.py"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - .:/app
+      - ./data/zeek_logs:/app/data/zeek_logs:ro
+    environment:
+      - PYTHONPATH=/app
+      - DATABASE_URL=postgresql://acra_admin:changeme123@localhost:5432/acra
+      - REDIS_URL=redis://localhost:6379/0
+      - NETWORK_INTERFACE=eth0
+      - PYTHONUNBUFFERED=1
+    restart: always
+
+  ml-service:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.ml
+    container_name: acra-ml
+    network_mode: "host"
+    command: >
+      /bin/sh -c "
+      python -u src/ml/trainer.py"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - .:/app
+      - ./data/ml_models:/app/data/ml_models
+    environment:
+      - PYTHONPATH=/app
+      - DATABASE_URL=postgresql://acra_admin:changeme123@localhost:5432/acra
+      - REDIS_URL=redis://localhost:6379/0
+      - ML_RETRAIN_INTERVAL=3600
+      - PYTHONUNBUFFERED=1
+    restart: always
+
+  suricata:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.suricata
+    container_name: acra-suricata
+    network_mode: "host"
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+      - SYS_ADMIN
+    volumes:
+      - ./data/suricata_logs:/var/log/suricata
+      - ./docker/config/suricata.yaml:/etc/suricata/suricata.yaml:ro
+      - ./docker/config/update-signatures.sh:/usr/local/bin/update-signatures.sh:ro
+    environment:
+      - INTERFACE=eth0
+      - UPDATE_SIGNATURES=true
+    restart: always
+
+  suricata-streamer:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    container_name: acra-suricata-streamer
+    network_mode: "host"
+    command: >
+      /bin/sh -c "
+      mkdir -p /app/data/suricata_logs && 
+      touch /app/data/suricata_logs/eve.json && 
+      chmod -R 777 /app/data/suricata_logs &&
+      python -u src/ingestion/suricata_stream.py"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      suricata:
+        condition: service_started
+    volumes:
+      - .:/app
+      - ./data/suricata_logs:/app/data/suricata_logs
+    environment:
+      - PYTHONPATH=/app
+      - DATABASE_URL=postgresql://acra_admin:changeme123@localhost:5432/acra
+      - REDIS_URL=redis://localhost:6379/0
+      - PYTHONUNBUFFERED=1
+    restart: always

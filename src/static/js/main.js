@@ -2,7 +2,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const canvasFlow = document.getElementById('networkFlowChart');
     console.log("Graphique initialisé avec :", networkLabels.length, "points");
     
-    // --- 1. GRAPHIQUE DES FLUX (MODE TIMELINE INFINIE) ---
+    // --- 1. GRAPHIQUE DES FLUX (ZEEK - TIMELINE INFINIE) ---
     if (canvasFlow && typeof networkLabels !== 'undefined') {
         const ctxFlow = canvasFlow.getContext('2d');
         
@@ -28,8 +28,8 @@ document.addEventListener('DOMContentLoaded', function() {
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: false, // Important pour contrôler la largeur manuellement
-                animation: { duration: 200 }, // Animation très courte pour la fluidité
+                maintainAspectRatio: false,
+                animation: { duration: 200 },
                 plugins: { 
                     legend: { display: false },
                     tooltip: { enabled: true }
@@ -94,6 +94,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     e.target.innerText = "Bloqué";
                     e.target.style.background = "#555";
                     e.target.disabled = true;
+                    
+                    // Appel API pour bloquer l'IP
+                    fetch('/api/response/block-ip', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ip: ip})
+                    });
                 }
             }
         });
